@@ -72,46 +72,51 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "device_info": device_info,
     }
 
-    # Register send_raw_command service if enabled and not already registered
-    if entry.data.get(CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS):
-        if not hass.services.has_service(DOMAIN, SERVICE_SEND_RAW_COMMAND):
-            async def async_send_raw_command(call: ServiceCall) -> None:
-                """Handle send_raw_command service call."""
-                host = call.data[CONF_HOST]
-                endpoint = call.data[ATTR_ENDPOINT]
-                body = call.data[ATTR_BODY]
+    # Register send_raw_command service if not already registered
+    # Check is done at call time via options/data
+    if not hass.services.has_service(DOMAIN, SERVICE_SEND_RAW_COMMAND):
+        async def async_send_raw_command(call: ServiceCall) -> None:
+            """Handle send_raw_command service call."""
+            host = call.data[CONF_HOST]
+            endpoint = call.data[ATTR_ENDPOINT]
+            body = call.data[ATTR_BODY]
 
-                # Find the client for the specified host
-                client_found = None
-                for eid, data in hass.data[DOMAIN].items():
-                    if isinstance(data, dict) and "client" in data:
-                        if data["client"].host == host:
-                            # Check if this entry allows raw commands
-                            config_entry = hass.config_entries.async_get_entry(eid)
-                            if config_entry and config_entry.data.get(
-                                CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS
-                            ):
+            # Find the client for the specified host
+            client_found = None
+            for eid, data in hass.data[DOMAIN].items():
+                if isinstance(data, dict) and "client" in data:
+                    if data["client"].host == host:
+                        # Check if this entry allows raw commands (options first, then data)
+                        config_entry = hass.config_entries.async_get_entry(eid)
+                        if config_entry:
+                            allow_raw = config_entry.options.get(
+                                CONF_ALLOW_RAW_COMMANDS,
+                                config_entry.data.get(
+                                    CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS
+                                ),
+                            )
+                            if allow_raw:
                                 client_found = data["client"]
                                 break
 
-                if not client_found:
-                    _LOGGER.error(
-                        "No Novastar device found at %s with raw commands enabled", host
-                    )
-                    return
+            if not client_found:
+                _LOGGER.error(
+                    "No Novastar device found at %s with raw commands enabled", host
+                )
+                return
 
-                result = await client_found.async_send_raw_command(endpoint, body)
-                if result is None:
-                    _LOGGER.warning("Raw command to %s failed", endpoint)
-                else:
-                    _LOGGER.debug("Raw command result: %s", result)
+            result = await client_found.async_send_raw_command(endpoint, body)
+            if result is None:
+                _LOGGER.warning("Raw command to %s failed", endpoint)
+            else:
+                _LOGGER.debug("Raw command result: %s", result)
 
-            hass.services.async_register(
-                DOMAIN,
-                SERVICE_SEND_RAW_COMMAND,
-                async_send_raw_command,
-                schema=SERVICE_SEND_RAW_COMMAND_SCHEMA,
-            )
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SEND_RAW_COMMAND,
+            async_send_raw_command,
+            schema=SERVICE_SEND_RAW_COMMAND_SCHEMA,
+        )
 
     loaded_platforms: list[Any] = []
     for platform in PLATFORMS:

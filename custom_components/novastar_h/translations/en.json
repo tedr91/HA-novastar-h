@@ -89,6 +89,19 @@
       "no_host": "Could not determine host from discovery."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Novastar Options",
+        "data": {
+          "allow_raw_commands": "Allow Raw Commands"
+        },
+        "data_description": {
+          "allow_raw_commands": "Enable sending raw API commands via service call"
+        }
+      }
+    }
+  },
   "entity": {
     "switch": {
       "screen_output": {
