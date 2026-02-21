@@ -420,7 +420,7 @@ class NovastarClient:
         Returns dict with:
         - temp_status: Temperature status code
         - device_status: Device status (0=busy, 1=ready)
-        - signal_status: Signal power status from iSignal
+        - signal_status: Signal power status from powerList[].iSignal
         """
         data = await self._async_request("device/readDetail", {"deviceId": device_id})
         result: dict[str, Any] = {
@@ -435,7 +435,12 @@ class NovastarClient:
             device_status = data.get("status")
             if device_status is not None and isinstance(device_status, (int, float)):
                 result["device_status"] = int(device_status)
-            signal_status = data.get("iSignal")
-            if signal_status is not None and isinstance(signal_status, (int, float)):
-                result["signal_status"] = int(signal_status)
+            # iSignal is under powerList array
+            power_list = data.get("powerList")
+            if power_list and isinstance(power_list, list) and len(power_list) > 0:
+                first_power = power_list[0]
+                if isinstance(first_power, dict):
+                    signal_status = first_power.get("iSignal")
+                    if signal_status is not None and isinstance(signal_status, (int, float)):
+                        result["signal_status"] = int(signal_status)
         return result
