@@ -325,7 +325,7 @@ class NovastarClient:
     ) -> int:
         """Get current screen brightness (0-100)."""
         data = await self._async_request(
-            "screen/readBrightness",
+            "screen/readDetail",
             {"screenId": screen_id, "deviceId": device_id},
         )
         if data and isinstance(data, dict):
@@ -372,7 +372,7 @@ class NovastarClient:
             device_id: Device ID
         """
         data = await self._async_request(
-            "screen/freeze",
+            "screen/writeFreeze",
             {
                 "type": 1 if freeze else 0,  # 1: Freeze, 0: Unfreeze
                 "screenId": screen_id,
