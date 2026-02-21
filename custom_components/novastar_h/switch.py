@@ -25,6 +25,7 @@ async def async_setup_entry(
 
     entities = [
         NovastarFTBSwitch(entry, coordinator, device_info),
+        NovastarFreezeSwitch(entry, coordinator, device_info),
     ]
     async_add_entities(entities)
 
@@ -101,3 +102,39 @@ class NovastarFTBSwitch(NovastarSwitchBase):
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off screen output (enable FTB/blackout)."""
         await self.coordinator.async_set_ftb(blackout=True)
+
+
+class NovastarFreezeSwitch(NovastarSwitchBase):
+    """Switch for screen freeze control.
+
+    When ON: Screen is frozen (displaying last frame)
+    When OFF: Screen is live
+    """
+
+    _attr_name = "Freeze Screen"
+    _attr_translation_key = "freeze"
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: NovastarCoordinator,
+        device_info: NovastarDeviceInfo,
+    ) -> None:
+        """Initialize freeze switch."""
+        super().__init__(entry, coordinator, device_info)
+        self._attr_unique_id = f"{entry.entry_id}_freeze"
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if screen is frozen."""
+        if self.coordinator.data:
+            return self.coordinator.data.freeze_active
+        return False
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Freeze screen."""
+        await self.coordinator.async_set_freeze(freeze=True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Unfreeze screen."""
+        await self.coordinator.async_set_freeze(freeze=False)

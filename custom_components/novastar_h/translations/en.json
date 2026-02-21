@@ -89,6 +89,9 @@
     "switch": {
       "screen_output": {
         "name": "Power (Screen Output)"
+      },
+      "freeze": {
+        "name": "Freeze Screen"
       }
     },
     "select": {

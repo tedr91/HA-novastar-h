@@ -56,6 +56,7 @@ class NovastarState:
     screen_id: int = 0
     brightness: int = 100
     ftb_active: bool = False  # Fade to black (blackout) active
+    freeze_active: bool = False  # Screen freeze active
     current_preset_id: int = -1  # -1 means no preset active
     screens: list[NovastarScreen] = field(default_factory=list)
     presets: list[NovastarPreset] = field(default_factory=list)
@@ -351,6 +352,29 @@ class NovastarClient:
             {
                 "type": 0 if blackout else 1,  # 0: Blackout, 1: Screen on
                 "time": transition_time,
+                "screenId": screen_id,
+                "deviceId": device_id,
+            },
+        )
+        return data is not None
+
+    async def async_set_freeze(
+        self,
+        freeze: bool,
+        screen_id: int = 0,
+        device_id: int = 0,
+    ) -> bool:
+        """Set screen freeze state.
+
+        Args:
+            freeze: True to freeze screen, False to unfreeze
+            screen_id: Screen ID
+            device_id: Device ID
+        """
+        data = await self._async_request(
+            "screen/freeze",
+            {
+                "type": 1 if freeze else 0,  # 1: Freeze, 0: Unfreeze
                 "screenId": screen_id,
                 "deviceId": device_id,
             },
