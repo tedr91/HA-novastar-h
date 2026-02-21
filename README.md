@@ -29,15 +29,22 @@ A Home Assistant custom integration for controlling Novastar H series LED video 
 
 ## Configuration
 
-This integration uses automatic network discovery (SSDP/Zeroconf). Novastar processors on your network will automatically appear in the **Discovered** section of Home Assistant.
-
 1. Go to **Settings** → **Devices & Services**
-2. Look for your Novastar processor in the **Discovered** section
-3. Click **Configure** and enter:
-   - **Project ID**: Your device's project ID (from device settings)
-   - **Secret Key**: Your device's secret key (from device settings)
+2. Click **Add Integration** and search for "Novastar H Series"
+3. Enter the connection details:
+   - **Host**: IP address of your Novastar processor
+   - **Port**: API port (default: 8000)
+   - **Project ID**: From Settings > OpenAPI Management on your device
+   - **Secret Key**: From Settings > OpenAPI Management on your device
    - **Enable Encryption**: Optional DES encryption for API communication
    - **Name**: Display name for the device
+
+### Getting Project ID and Secret Key
+
+On your Novastar H series processor:
+1. Go to **Settings** → **OpenAPI Management**
+2. Add or view the access credentials
+3. Copy the **pId** (Project ID) and **secretKey**
 
 ## Entities
 
