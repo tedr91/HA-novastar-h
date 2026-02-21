@@ -63,6 +63,7 @@ class NovastarState:
     current_preset_id: int = -1  # -1 means no preset active
     screens: list[NovastarScreen] = field(default_factory=list)
     presets: list[NovastarPreset] = field(default_factory=list)
+    inputs: list[dict[str, Any]] = field(default_factory=list)
 
 
 class NovastarClient:
@@ -98,6 +99,9 @@ class NovastarClient:
         self._encryption = encryption
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._base_url = f"http://{host}:{port}/open/api"
+        self._input_detail_cache: dict[int, dict[str, Any]] = {}
+        self._input_signature_cache: dict[int, str] = {}
+        self._input_refresh_counter = 0
 
     @property
     def host(self) -> str:
@@ -409,8 +413,100 @@ class NovastarClient:
         state.temp_status = temp_data.get("temp_status")
         state.device_status = temp_data.get("device_status")
         state.signal_status = temp_data.get("signal_status")
+        state.inputs = await self.async_get_inputs_with_details(device_id)
 
         return state
+
+    async def async_get_input_list(self, device_id: int = 0) -> list[dict[str, Any]]:
+        """Read all available inputs from input/readList."""
+        data = await self._async_request("input/readList", {"deviceId": device_id})
+        if data and isinstance(data, dict):
+            inputs = data.get("inputs")
+            if isinstance(inputs, list):
+                return [item for item in inputs if isinstance(item, dict)]
+        return []
+
+    async def async_get_input_detail(
+        self, input_id: int, device_id: int = 0
+    ) -> dict[str, Any] | None:
+        """Read detailed information of one input from input/readDetail."""
+        data = await self._async_request(
+            "input/readDetail",
+            {"deviceId": device_id, "inputId": input_id},
+        )
+        if data and isinstance(data, dict):
+            return data
+        return None
+
+    def _input_signature(self, input_data: dict[str, Any]) -> str:
+        """Build a signature for change detection on list-level input properties."""
+        general = input_data.get("general")
+        resolution = input_data.get("resolution")
+        timing = input_data.get("timing")
+        signature_payload = {
+            "online": input_data.get("online"),
+            "isUsed": input_data.get("isUsed"),
+            "iSignal": input_data.get("iSignal"),
+            "interfaceType": input_data.get("interfaceType"),
+            "resolution": resolution if isinstance(resolution, dict) else {},
+            "timing": timing if isinstance(timing, dict) else {},
+            "general": general if isinstance(general, dict) else {},
+        }
+        return json.dumps(signature_payload, sort_keys=True, default=str)
+
+    async def async_get_inputs_with_details(
+        self, device_id: int = 0
+    ) -> list[dict[str, Any]]:
+        """Get all inputs with selective detail refresh.
+
+        Strategy:
+        - Always read input list (cheap, covers all inputs)
+        - Read per-input detail only when list-level signature changes
+          or on periodic refresh cycles
+        """
+        inputs = await self.async_get_input_list(device_id)
+        if not inputs:
+            return []
+
+        self._input_refresh_counter += 1
+        periodic_refresh = self._input_refresh_counter % 12 == 0
+
+        merged_inputs: list[dict[str, Any]] = []
+        seen_input_ids: set[int] = set()
+
+        for input_data in inputs:
+            input_id_raw = input_data.get("inputId")
+            if not isinstance(input_id_raw, int):
+                merged_inputs.append(input_data)
+                continue
+
+            input_id = input_id_raw
+            seen_input_ids.add(input_id)
+            signature = self._input_signature(input_data)
+            cached_signature = self._input_signature_cache.get(input_id)
+
+            should_refresh_detail = periodic_refresh or cached_signature != signature
+            if should_refresh_detail:
+                detail = await self.async_get_input_detail(input_id, device_id)
+                if detail is not None:
+                    self._input_detail_cache[input_id] = detail
+                    self._input_signature_cache[input_id] = signature
+
+            cached_detail = self._input_detail_cache.get(input_id)
+            if cached_detail and isinstance(cached_detail, dict):
+                merged = {**input_data, **cached_detail}
+            else:
+                merged = dict(input_data)
+            merged_inputs.append(merged)
+
+        # Remove cache entries for inputs that no longer exist
+        stale_ids = set(self._input_detail_cache) - seen_input_ids
+        for stale_id in stale_ids:
+            self._input_detail_cache.pop(stale_id, None)
+            self._input_signature_cache.pop(stale_id, None)
+
+        merged_inputs.sort(key=lambda item: item.get("inputId", 0))
+        return merged_inputs
 
     async def async_get_device_status_info(
         self, device_id: int = 0

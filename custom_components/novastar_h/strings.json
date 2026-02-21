@@ -126,6 +126,9 @@
       },
       "signal_status": {
         "name": "Signal Power Status"
+      },
+      "inputs": {
+        "name": "Inputs"
       }
     }
   },
