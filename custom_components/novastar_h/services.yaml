@@ -1,0 +1,25 @@
+send_raw_command:
+  name: Send Raw Command
+  description: Send a raw API command to the Novastar processor (requires "Allow Raw Commands" option in configuration).
+  fields:
+    host:
+      name: Host
+      description: The IP address of the Novastar processor to send the command to.
+      required: true
+      example: "192.168.1.100"
+      selector:
+        text:
+    endpoint:
+      name: Endpoint
+      description: The API endpoint path (e.g., "device/readDetail", "screen/writeBrightness").
+      required: true
+      example: "device/readDetail"
+      selector:
+        text:
+    body:
+      name: Body
+      description: The JSON body to send with the request.
+      required: true
+      example: '{"deviceId": 0}'
+      selector:
+        object:

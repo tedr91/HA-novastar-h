@@ -444,3 +444,17 @@ class NovastarClient:
                     if signal_status is not None and isinstance(signal_status, (int, float)):
                         result["signal_status"] = int(signal_status)
         return result
+
+    async def async_send_raw_command(
+        self, endpoint: str, body: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Send a raw API command.
+
+        Args:
+            endpoint: API endpoint path (e.g., "device/readDetail")
+            body: Business data for the request body
+
+        Returns:
+            Response body dict on success, None on failure
+        """
+        return await self._async_request(endpoint, body)

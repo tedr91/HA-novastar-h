@@ -11,9 +11,11 @@ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 
 from .api import NovastarClient
 from .const import (
+    CONF_ALLOW_RAW_COMMANDS,
     CONF_ENCRYPTION,
     CONF_PROJECT_ID,
     CONF_SECRET_KEY,
+    DEFAULT_ALLOW_RAW_COMMANDS,
     DEFAULT_ENCRYPTION,
     DEFAULT_NAME,
     DEFAULT_PORT,
@@ -49,6 +51,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
             project_id = user_input[CONF_PROJECT_ID]
             secret_key = user_input[CONF_SECRET_KEY]
             encryption = user_input.get(CONF_ENCRYPTION, DEFAULT_ENCRYPTION)
+            allow_raw_commands = user_input.get(CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS)
 
             # Validate credentials by testing connection
             client = NovastarClient(
@@ -71,6 +74,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_PROJECT_ID: project_id,
                         CONF_SECRET_KEY: secret_key,
                         CONF_ENCRYPTION: encryption,
+                        CONF_ALLOW_RAW_COMMANDS: allow_raw_commands,
                     },
                 )
             errors["base"] = "cannot_connect"
@@ -84,6 +88,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_PROJECT_ID): str,
                     vol.Required(CONF_SECRET_KEY): str,
                     vol.Optional(CONF_ENCRYPTION, default=DEFAULT_ENCRYPTION): bool,
+                    vol.Optional(CONF_ALLOW_RAW_COMMANDS, default=DEFAULT_ALLOW_RAW_COMMANDS): bool,
                     vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
                 }
             ),
@@ -151,6 +156,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
             project_id = user_input[CONF_PROJECT_ID]
             secret_key = user_input[CONF_SECRET_KEY]
             encryption = user_input.get(CONF_ENCRYPTION, DEFAULT_ENCRYPTION)
+            allow_raw_commands = user_input.get(CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS)
 
             # Validate credentials by testing connection
             client = NovastarClient(
@@ -173,6 +179,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_PROJECT_ID: project_id,
                         CONF_SECRET_KEY: secret_key,
                         CONF_ENCRYPTION: encryption,
+                        CONF_ALLOW_RAW_COMMANDS: allow_raw_commands,
                     },
                 )
             errors["base"] = "cannot_connect"
@@ -186,6 +193,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_PROJECT_ID): str,
                     vol.Required(CONF_SECRET_KEY): str,
                     vol.Optional(CONF_ENCRYPTION, default=DEFAULT_ENCRYPTION): bool,
+                    vol.Optional(CONF_ALLOW_RAW_COMMANDS, default=DEFAULT_ALLOW_RAW_COMMANDS): bool,
                     vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
                 }
             ),
@@ -225,6 +233,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_PROJECT_ID: project_id,
                         CONF_SECRET_KEY: secret_key,
                         CONF_ENCRYPTION: encryption,
+                        CONF_ALLOW_RAW_COMMANDS: DEFAULT_ALLOW_RAW_COMMANDS,
                     },
                 )
             errors["base"] = "cannot_connect"
@@ -332,6 +341,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_PROJECT_ID: project_id,
                         CONF_SECRET_KEY: secret_key,
                         CONF_ENCRYPTION: encryption,
+                        CONF_ALLOW_RAW_COMMANDS: DEFAULT_ALLOW_RAW_COMMANDS,
                     },
                 )
             errors["base"] = "cannot_connect"
