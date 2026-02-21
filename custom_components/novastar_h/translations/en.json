@@ -129,6 +129,15 @@
       },
       "inputs": {
         "name": "Inputs"
+      },
+      "layers": {
+        "name": "Layers"
+      },
+      "active_layer_count": {
+        "name": "Active Layer Count"
+      },
+      "top_layer_source": {
+        "name": "Top Layer Source"
       }
     }
   },

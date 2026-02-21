@@ -64,6 +64,7 @@ class NovastarState:
     screens: list[NovastarScreen] = field(default_factory=list)
     presets: list[NovastarPreset] = field(default_factory=list)
     inputs: list[dict[str, Any]] = field(default_factory=list)
+    layers: list[dict[str, Any]] = field(default_factory=list)
 
 
 class NovastarClient:
@@ -102,6 +103,9 @@ class NovastarClient:
         self._input_detail_cache: dict[int, dict[str, Any]] = {}
         self._input_signature_cache: dict[int, str] = {}
         self._input_refresh_counter = 0
+        self._layer_detail_cache: dict[int, dict[str, Any]] = {}
+        self._layer_signature_cache: dict[int, str] = {}
+        self._layer_refresh_counter = 0
 
     @property
     def host(self) -> str:
@@ -414,6 +418,7 @@ class NovastarClient:
         state.device_status = temp_data.get("device_status")
         state.signal_status = temp_data.get("signal_status")
         state.inputs = await self.async_get_inputs_with_details(device_id)
+        state.layers = await self.async_get_layers_with_details(device_id, screen_id)
 
         return state
 
@@ -507,6 +512,98 @@ class NovastarClient:
 
         merged_inputs.sort(key=lambda item: item.get("inputId", 0))
         return merged_inputs
+
+    async def async_get_layer_list(
+        self, device_id: int = 0, screen_id: int = 0
+    ) -> list[dict[str, Any]]:
+        """Read all layers from layer/readList."""
+        data = await self._async_request(
+            "layer/readList",
+            {"deviceId": device_id, "screenId": screen_id},
+        )
+        if data and isinstance(data, dict):
+            layers = data.get("layers")
+            if isinstance(layers, list):
+                return [item for item in layers if isinstance(item, dict)]
+        return []
+
+    async def async_get_layer_detail(
+        self, layer_id: int, device_id: int = 0, screen_id: int = 0
+    ) -> dict[str, Any] | None:
+        """Read detailed information of one layer from layer/readDetail."""
+        data = await self._async_request(
+            "layer/readDetail",
+            {"deviceId": device_id, "screenId": screen_id, "layerId": layer_id},
+        )
+        if data and isinstance(data, dict):
+            return data
+        return None
+
+    def _layer_signature(self, layer_data: dict[str, Any]) -> str:
+        """Build a signature for change detection on list-level layer properties."""
+        signature_payload = {
+            "layerId": layer_data.get("layerId"),
+            "sourceType": layer_data.get("sourceType"),
+            "lock": layer_data.get("lock"),
+            "freeze": layer_data.get("freeze"),
+            "visible": layer_data.get("visible"),
+            "zOrder": layer_data.get("zOrder"),
+            "x": layer_data.get("x"),
+            "y": layer_data.get("y"),
+            "width": layer_data.get("width"),
+            "height": layer_data.get("height"),
+            "inputId": layer_data.get("inputId"),
+            "sourceId": layer_data.get("sourceId"),
+            "source": layer_data.get("source") if isinstance(layer_data.get("source"), dict) else {},
+        }
+        return json.dumps(signature_payload, sort_keys=True, default=str)
+
+    async def async_get_layers_with_details(
+        self, device_id: int = 0, screen_id: int = 0
+    ) -> list[dict[str, Any]]:
+        """Get all layers with selective detail refresh."""
+        layers = await self.async_get_layer_list(device_id, screen_id)
+        if not layers:
+            return []
+
+        self._layer_refresh_counter += 1
+        periodic_refresh = self._layer_refresh_counter % 12 == 0
+
+        merged_layers: list[dict[str, Any]] = []
+        seen_layer_ids: set[int] = set()
+
+        for layer_data in layers:
+            layer_id_raw = layer_data.get("layerId")
+            if not isinstance(layer_id_raw, int):
+                merged_layers.append(layer_data)
+                continue
+
+            layer_id = layer_id_raw
+            seen_layer_ids.add(layer_id)
+            signature = self._layer_signature(layer_data)
+            cached_signature = self._layer_signature_cache.get(layer_id)
+
+            should_refresh_detail = periodic_refresh or cached_signature != signature
+            if should_refresh_detail:
+                detail = await self.async_get_layer_detail(layer_id, device_id, screen_id)
+                if detail is not None:
+                    self._layer_detail_cache[layer_id] = detail
+                    self._layer_signature_cache[layer_id] = signature
+
+            cached_detail = self._layer_detail_cache.get(layer_id)
+            if cached_detail and isinstance(cached_detail, dict):
+                merged = {**layer_data, **cached_detail}
+            else:
+                merged = dict(layer_data)
+            merged_layers.append(merged)
+
+        stale_ids = set(self._layer_detail_cache) - seen_layer_ids
+        for stale_id in stale_ids:
+            self._layer_detail_cache.pop(stale_id, None)
+            self._layer_signature_cache.pop(stale_id, None)
+
+        merged_layers.sort(key=lambda item: item.get("layerId", 0))
+        return merged_layers
 
     async def async_get_device_status_info(
         self, device_id: int = 0
