@@ -6,6 +6,7 @@ import asyncio
 import logging
 import socket
 from dataclasses import dataclass
+from ipaddress import ip_address
 
 import aiohttp
 
@@ -32,22 +33,72 @@ class DiscoveredDevice:
 
 
 def get_local_network_range() -> list[str]:
-    """Get list of IP addresses to scan on the local network."""
+    """Get a best-effort list of host IPs to scan.
+
+    Uses multiple sources so discovery keeps working in containerized setups:
+    - Local interface IPv4 addresses
+    - ARP table entries from /proc/net/arp
+    """
+
+    def _is_private_ipv4(host: str) -> bool:
+        try:
+            ip = ip_address(host)
+            return ip.version == 4 and ip.is_private and not ip.is_loopback
+        except ValueError:
+            return False
+
+    prefixes: set[str] = set()
+    arp_hosts: set[str] = set()
+
     try:
-        # Get local IP address
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
-        s.close()
+        # Primary guess: OS-selected source IP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            local_ip = sock.getsockname()[0]
+            if _is_private_ipv4(local_ip):
+                prefixes.add(".".join(local_ip.split(".")[:-1]))
+    except Exception:
+        pass
 
-        # Extract network prefix (assumes /24 subnet)
-        prefix = ".".join(local_ip.split(".")[:-1])
+    try:
+        # Additional local interface addresses
+        host_name = socket.gethostname()
+        for _name, _alias, addresses in socket.gethostbyname_ex(host_name):
+            for addr in addresses:
+                if _is_private_ipv4(addr):
+                    prefixes.add(".".join(addr.split(".")[:-1]))
+    except Exception:
+        pass
 
-        # Generate all IPs in the /24 range (excluding .0 and .255)
-        return [f"{prefix}.{i}" for i in range(1, 255)]
-    except Exception as err:
-        _LOGGER.error("Failed to determine local network range: %s", err)
-        return []
+    try:
+        # ARP neighbors (Linux / HA OS)
+        with open("/proc/net/arp", encoding="utf-8") as arp_file:
+            # Skip header
+            next(arp_file, None)
+            for line in arp_file:
+                parts = line.split()
+                if not parts:
+                    continue
+                host = parts[0]
+                if _is_private_ipv4(host):
+                    arp_hosts.add(host)
+                    prefixes.add(".".join(host.split(".")[:-1]))
+    except Exception:
+        pass
+
+    hosts: list[str] = []
+    for prefix in sorted(prefixes):
+        hosts.extend(f"{prefix}.{i}" for i in range(1, 255))
+
+    # Include ARP-discovered hosts directly and de-duplicate while preserving order
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for host in list(arp_hosts) + hosts:
+        if host not in seen:
+            seen.add(host)
+            ordered.append(host)
+
+    return ordered
 
 
 async def probe_host(host: str, port: int = DEFAULT_PORT) -> DiscoveredDevice | None:
@@ -64,16 +115,25 @@ async def probe_host(host: str, port: int = DEFAULT_PORT) -> DiscoveredDevice | 
         except (asyncio.TimeoutError, OSError, ConnectionRefusedError):
             return None
 
-        # Port is open, check if it responds like a Novastar device
-        # Try HTTP request and look for gunicorn server header
+        # Port is open, check Novastar API signature response shape first
         try:
             async with aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=PROBE_TIMEOUT)
             ) as session:
-                async with session.get(f"http://{host}:{port}/") as response:
-                    server = response.headers.get("Server", "")
-                    # Novastar devices use gunicorn
-                    if "gunicorn" in server.lower():
+                probe_body = {
+                    "body": {"deviceId": 0},
+                    "sign": "",
+                    "pId": "",
+                    "timeStamp": "0",
+                }
+                async with session.post(
+                    f"http://{host}:{port}/open/api/device/readDetail",
+                    json=probe_body,
+                ) as response:
+                    data = await response.json(content_type=None)
+                    if isinstance(data, dict) and (
+                        "status" in data or "msg" in data or "body" in data
+                    ):
                         return DiscoveredDevice(
                             host=host,
                             port=port,
@@ -84,15 +144,23 @@ async def probe_host(host: str, port: int = DEFAULT_PORT) -> DiscoveredDevice | 
         except Exception:
             pass
 
-        # If HTTP check failed, still return as potential device on port 8000
-        # Since port 8000 with TCP open is unusual
-        return DiscoveredDevice(
-            host=host,
-            port=port,
-            name=f"Novastar @ {host}",
-            model="",
-            serial="",
-        )
+        # Fallback heuristic: base endpoint often reports gunicorn on Novastar.
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=PROBE_TIMEOUT)
+            ) as session:
+                async with session.get(f"http://{host}:{port}/") as response:
+                    server = response.headers.get("Server", "")
+                    if "gunicorn" in server.lower():
+                        return DiscoveredDevice(
+                            host=host,
+                            port=port,
+                            name=f"Novastar @ {host}",
+                            model="",
+                            serial="",
+                        )
+        except Exception:
+            pass
     except Exception:
         pass
 

@@ -10,7 +10,6 @@
           "project_id": "Project ID",
           "secret_key": "Secret Key",
           "encryption": "Enable Encryption",
-          "allow_raw_commands": "Allow Raw Commands",
           "name": "Name"
         },
         "data_description": {
@@ -18,8 +17,7 @@
           "port": "API port (default: 8000)",
           "project_id": "From Settings > OpenAPI Management on your device",
           "secret_key": "From Settings > OpenAPI Management on your device",
-          "encryption": "Enable encrypted communication with the device",
-          "allow_raw_commands": "Enable sending raw API commands via service call"
+          "encryption": "Enable encrypted communication with the device"
         }
       },
       "scan": {
@@ -38,7 +36,6 @@
           "project_id": "Project ID",
           "secret_key": "Secret Key",
           "encryption": "Enable Encryption",
-          "allow_raw_commands": "Allow Raw Commands",
           "name": "Name"
         },
         "data_description": {
@@ -46,8 +43,7 @@
           "port": "API port (default: 8000)",
           "project_id": "From Settings > OpenAPI Management on your device",
           "secret_key": "From Settings > OpenAPI Management on your device",
-          "encryption": "Enable encrypted communication with the device",
-          "allow_raw_commands": "Enable sending raw API commands via service call"
+          "encryption": "Enable encrypted communication with the device"
         }
       },
       "credentials": {

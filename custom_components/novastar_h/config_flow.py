@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 import voluptuous as vol
 from homeassistant.components import ssdp, zeroconf
-from homeassistant.config_entries import ConfigFlow, FlowResult, OptionsFlow
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, FlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.core import callback
 
@@ -112,7 +112,6 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
             project_id = user_input[CONF_PROJECT_ID]
             secret_key = user_input[CONF_SECRET_KEY]
             encryption = user_input.get(CONF_ENCRYPTION, DEFAULT_ENCRYPTION)
-            allow_raw_commands = user_input.get(CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS)
 
             # Validate credentials by testing connection
             client = NovastarClient(
@@ -135,7 +134,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_PROJECT_ID: project_id,
                         CONF_SECRET_KEY: secret_key,
                         CONF_ENCRYPTION: encryption,
-                        CONF_ALLOW_RAW_COMMANDS: allow_raw_commands,
+                        CONF_ALLOW_RAW_COMMANDS: DEFAULT_ALLOW_RAW_COMMANDS,
                     },
                 )
             errors["base"] = "cannot_connect"
@@ -149,7 +148,6 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Required(CONF_PROJECT_ID): str,
                     vol.Required(CONF_SECRET_KEY): str,
                     vol.Optional(CONF_ENCRYPTION, default=DEFAULT_ENCRYPTION): bool,
-                    vol.Optional(CONF_ALLOW_RAW_COMMANDS, default=DEFAULT_ALLOW_RAW_COMMANDS): bool,
                     vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
                 }
             ),
@@ -325,9 +323,9 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
 class NovastarOptionsFlowHandler(OptionsFlow):
     """Handle options flow for Novastar H Series."""
 
-    def __init__(self, config_entry) -> None:
+    def __init__(self, config_entry: ConfigEntry) -> None:
         """Initialize options flow."""
-        self.config_entry = config_entry
+        super().__init__(config_entry)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
