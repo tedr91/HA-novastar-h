@@ -75,7 +75,7 @@ class NovastarFTBSwitch(NovastarSwitchBase):
     """
 
     _attr_name = "Power (Screen Output)"
-    _attr_translation_key = "output"
+    _attr_translation_key = "screen_output"
 
     def __init__(
         self,

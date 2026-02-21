@@ -147,6 +147,28 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unloaded = await hass.config_entries.async_unload_platforms(entry, loaded_platforms)
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id, None)
+
+        # Remove raw command service if no remaining entries allow it.
+        has_raw_enabled_entry = False
+        for eid in hass.data.get(DOMAIN, {}):
+            config_entry = hass.config_entries.async_get_entry(eid)
+            if not config_entry:
+                continue
+            allow_raw = config_entry.options.get(
+                CONF_ALLOW_RAW_COMMANDS,
+                config_entry.data.get(
+                    CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS
+                ),
+            )
+            if allow_raw:
+                has_raw_enabled_entry = True
+                break
+
+        if (
+            not has_raw_enabled_entry
+            and hass.services.has_service(DOMAIN, SERVICE_SEND_RAW_COMMAND)
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_SEND_RAW_COMMAND)
     return unloaded
 
 

@@ -48,59 +48,8 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle manual configuration."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            host = user_input[CONF_HOST]
-            port = user_input.get(CONF_PORT, DEFAULT_PORT)
-            name = user_input.get(CONF_NAME, DEFAULT_NAME)
-            project_id = user_input[CONF_PROJECT_ID]
-            secret_key = user_input[CONF_SECRET_KEY]
-            encryption = user_input.get(CONF_ENCRYPTION, DEFAULT_ENCRYPTION)
-            allow_raw_commands = user_input.get(CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS)
-
-            # Validate credentials by testing connection
-            client = NovastarClient(
-                host=host,
-                port=port,
-                project_id=project_id,
-                secret_key=secret_key,
-                encryption=encryption,
-            )
-            if await client.async_can_connect():
-                await self.async_set_unique_id(f"novastar_h_{host}")
-                self._abort_if_unique_id_configured()
-
-                return self.async_create_entry(
-                    title=name,
-                    data={
-                        CONF_HOST: host,
-                        CONF_PORT: port,
-                        CONF_NAME: name,
-                        CONF_PROJECT_ID: project_id,
-                        CONF_SECRET_KEY: secret_key,
-                        CONF_ENCRYPTION: encryption,
-                        CONF_ALLOW_RAW_COMMANDS: allow_raw_commands,
-                    },
-                )
-            errors["base"] = "cannot_connect"
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_HOST): str,
-                    vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-                    vol.Required(CONF_PROJECT_ID): str,
-                    vol.Required(CONF_SECRET_KEY): str,
-                    vol.Optional(CONF_ENCRYPTION, default=DEFAULT_ENCRYPTION): bool,
-                    vol.Optional(CONF_ALLOW_RAW_COMMANDS, default=DEFAULT_ALLOW_RAW_COMMANDS): bool,
-                    vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
-                }
-            ),
-            errors=errors,
-        )
+        """Handle initial setup step by starting with network scan."""
+        return await self.async_step_scan(user_input)
 
     async def async_step_scan(
         self, user_input: dict[str, Any] | None = None

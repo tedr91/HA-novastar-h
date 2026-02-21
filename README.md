@@ -6,7 +6,7 @@ A Home Assistant custom integration for controlling Novastar H series LED video 
 
 ## Features
 
-- **Automatic Discovery**: Automatically finds Novastar processors on your network via SSDP/Zeroconf
+- **Discovery Support**: Supports Novastar discovery via SSDP/Zeroconf
 - **Screen Output Control**: Fade to black (FTB) control for display output
 - **Brightness Adjustment**: Control display brightness (0-100%)
 - **Preset Selection**: Switch between configured presets
@@ -31,13 +31,11 @@ A Home Assistant custom integration for controlling Novastar H series LED video 
 
 1. Go to **Settings** → **Devices & Services**
 2. Click **Add Integration** and search for "Novastar H Series"
-3. Choose how to add your device:
-   - **Scan network for devices**: Automatically finds Novastar processors on your local network
-   - **Enter device details manually**: Enter IP address and credentials directly
+3. The integration scans your local network for Novastar processors and lets you select a discovered device or continue with manual entry
 
 ### Network Scan
 
-The integration scans your local /24 network for devices with port 8000 open that respond to the Novastar API. This typically takes 10-30 seconds.
+The integration scans your local /24 network for devices with port 8000 open that respond to the Novastar API. You can also continue to manual setup from the scan screen.
 
 ### Manual Entry
 
