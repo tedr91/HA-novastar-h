@@ -73,7 +73,7 @@ class NovastarFTBSwitch(NovastarSwitchBase):
     When OFF: Screen is blacked out (FTB active)
     """
 
-    _attr_name = "Screen Output"
+    _attr_name = "Power (Screen Output)"
     _attr_translation_key = "output"
 
     def __init__(

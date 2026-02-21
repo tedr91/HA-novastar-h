@@ -319,6 +319,18 @@ class NovastarClient:
         )
         return data is not None
 
+    async def async_get_brightness(
+        self, screen_id: int = 0, device_id: int = 0
+    ) -> int:
+        """Get current screen brightness (0-100)."""
+        data = await self._async_request(
+            "screen/readBrightness",
+            {"screenId": screen_id, "deviceId": device_id},
+        )
+        if data and isinstance(data, dict):
+            return data.get("brightness", 100)
+        return 100
+
     async def async_set_ftb(
         self,
         blackout: bool,
@@ -361,5 +373,8 @@ class NovastarClient:
         state.current_preset_id = await self.async_get_current_preset(
             screen_id, device_id
         )
+
+        # Get brightness
+        state.brightness = await self.async_get_brightness(screen_id, device_id)
 
         return state
