@@ -23,9 +23,6 @@ from .discovery import DiscoveredDevice, scan_network
 
 _LOGGER = logging.getLogger(__name__)
 
-CONF_SCAN = "scan"
-CONF_MANUAL = "manual"
-
 
 class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Novastar H Series."""
@@ -42,15 +39,55 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step - choose scan or manual."""
-        if user_input is not None:
-            if user_input.get("action") == CONF_SCAN:
-                return await self.async_step_scan()
-            return await self.async_step_manual()
+        """Handle manual configuration."""
+        errors: dict[str, str] = {}
 
-        return self.async_show_menu(
+        if user_input is not None:
+            host = user_input[CONF_HOST]
+            port = user_input.get(CONF_PORT, DEFAULT_PORT)
+            name = user_input.get(CONF_NAME, DEFAULT_NAME)
+            project_id = user_input[CONF_PROJECT_ID]
+            secret_key = user_input[CONF_SECRET_KEY]
+            encryption = user_input.get(CONF_ENCRYPTION, DEFAULT_ENCRYPTION)
+
+            # Validate credentials by testing connection
+            client = NovastarClient(
+                host=host,
+                port=port,
+                project_id=project_id,
+                secret_key=secret_key,
+                encryption=encryption,
+            )
+            if await client.async_can_connect():
+                await self.async_set_unique_id(f"novastar_h_{host}")
+                self._abort_if_unique_id_configured()
+
+                return self.async_create_entry(
+                    title=name,
+                    data={
+                        CONF_HOST: host,
+                        CONF_PORT: port,
+                        CONF_NAME: name,
+                        CONF_PROJECT_ID: project_id,
+                        CONF_SECRET_KEY: secret_key,
+                        CONF_ENCRYPTION: encryption,
+                    },
+                )
+            errors["base"] = "cannot_connect"
+
+        return self.async_show_form(
             step_id="user",
-            menu_options=[CONF_SCAN, CONF_MANUAL],
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_HOST): str,
+                    vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
+                    vol.Required(CONF_PROJECT_ID): str,
+                    vol.Required(CONF_SECRET_KEY): str,
+                    vol.Optional(CONF_ENCRYPTION, default=DEFAULT_ENCRYPTION): bool,
+                    vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
+                }
+            ),
+            errors=errors,
         )
 
     async def async_step_scan(

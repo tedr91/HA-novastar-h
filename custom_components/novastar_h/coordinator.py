@@ -28,6 +28,7 @@ class NovastarCoordinator(DataUpdateCoordinator[NovastarState]):
         self._client = client
         self._device_id = device_id
         self._screen_id = screen_id
+        self._ftb_active = False  # Track FTB state locally (API doesn't expose read)
         super().__init__(
             hass,
             _LOGGER,
@@ -58,6 +59,24 @@ class NovastarCoordinator(DataUpdateCoordinator[NovastarState]):
             return self.data.presets
         return []
 
+    async def async_set_ftb(self, blackout: bool) -> bool:
+        """Set FTB state and track it locally."""
+        result = await self._client.async_set_ftb(
+            blackout=blackout,
+            screen_id=self._screen_id,
+            device_id=self._device_id,
+        )
+        if result:
+            self._ftb_active = blackout
+            # Update coordinator data immediately
+            if self.data:
+                self.data.ftb_active = blackout
+            self.async_set_updated_data(self.data)
+        return result
+
     async def _async_update_data(self) -> NovastarState:
         """Fetch data from the device."""
-        return await self._client.async_get_state(self._screen_id, self._device_id)
+        state = await self._client.async_get_state(self._screen_id, self._device_id)
+        # Preserve locally tracked FTB state
+        state.ftb_active = self._ftb_active
+        return state

@@ -122,21 +122,11 @@ class NovastarMediaPlayer(CoordinatorEntity[NovastarCoordinator], MediaPlayerEnt
 
     async def async_turn_on(self) -> None:
         """Turn on the display (disable FTB/blackout)."""
-        await self.coordinator.client.async_set_ftb(
-            blackout=False,
-            screen_id=self.coordinator.screen_id,
-            device_id=self.coordinator.device_id,
-        )
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_set_ftb(blackout=False)
 
     async def async_turn_off(self) -> None:
         """Turn off the display (enable FTB/blackout)."""
-        await self.coordinator.client.async_set_ftb(
-            blackout=True,
-            screen_id=self.coordinator.screen_id,
-            device_id=self.coordinator.device_id,
-        )
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_set_ftb(blackout=True)
 
     async def async_select_source(self, source: str) -> None:
         """Select a source (preset)."""

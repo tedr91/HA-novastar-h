@@ -3,10 +3,21 @@
     "step": {
       "user": {
         "title": "Add Novastar H Series Processor",
-        "description": "How would you like to add your Novastar processor?",
-        "menu_options": {
-          "scan": "Scan network for devices",
-          "manual": "Enter device details manually"
+        "description": "Enter the connection details for your Novastar H series processor.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "project_id": "Project ID",
+          "secret_key": "Secret Key",
+          "encryption": "Enable Encryption",
+          "name": "Name"
+        },
+        "data_description": {
+          "host": "IP address of your Novastar processor",
+          "port": "API port (default: 8000)",
+          "project_id": "From Settings > OpenAPI Management on your device",
+          "secret_key": "From Settings > OpenAPI Management on your device",
+          "encryption": "Enable encrypted communication with the device"
         }
       },
       "scan": {

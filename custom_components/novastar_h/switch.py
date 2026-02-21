@@ -96,18 +96,8 @@ class NovastarFTBSwitch(NovastarSwitchBase):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn on screen output (disable FTB/blackout)."""
-        await self.coordinator.client.async_set_ftb(
-            blackout=False,
-            screen_id=self.coordinator.screen_id,
-            device_id=self.coordinator.device_id,
-        )
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_set_ftb(blackout=False)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn off screen output (enable FTB/blackout)."""
-        await self.coordinator.client.async_set_ftb(
-            blackout=True,
-            screen_id=self.coordinator.screen_id,
-            device_id=self.coordinator.device_id,
-        )
-        await self.coordinator.async_request_refresh()
+        await self.coordinator.async_set_ftb(blackout=True)
