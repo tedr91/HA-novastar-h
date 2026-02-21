@@ -1,0 +1,7 @@
+{
+  "name": "Novastar H Series",
+  "content_in_root": false,
+  "domains": ["novastar_h"],
+  "render_readme": true,
+  "homeassistant": "2025.1.0"
+}

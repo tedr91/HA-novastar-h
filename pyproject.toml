@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "novastar-h-ha"
+version = "0.1.0"
+description = "Home Assistant custom integration for Novastar H series LED video processors"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Ted" }]
+dependencies = ["aiohttp>=3.8.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

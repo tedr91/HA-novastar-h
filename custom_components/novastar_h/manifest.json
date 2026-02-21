@@ -1,0 +1,25 @@
+{
+  "domain": "novastar_h",
+  "name": "Novastar H Series",
+  "codeowners": ["@tedr91"],
+  "config_flow": true,
+  "documentation": "https://github.com/tedr91/HA-novastar-h",
+  "issue_tracker": "https://github.com/tedr91/HA-novastar-h/issues",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "loggers": ["custom_components.novastar_h"],
+  "requirements": ["aiohttp>=3.8.0"],
+  "ssdp": [
+    {
+      "manufacturer": "Novastar"
+    },
+    {
+      "manufacturer": "NovaStar"
+    },
+    {
+      "deviceType": "urn:novastar-tech-com:device:LEDProcessor:1"
+    }
+  ],
+  "zeroconf": ["_novastar._tcp.local."],
+  "version": "0.1.0"
+}

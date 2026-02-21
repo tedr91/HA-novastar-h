@@ -1,0 +1,31 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update manifest version
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"  # Remove 'v' prefix if present
+          jq --arg version "$VERSION" '.version = $version' \
+            custom_components/novastar_h/manifest.json > tmp.json \
+            && mv tmp.json custom_components/novastar_h/manifest.json
+
+      - name: Create zip archive
+        run: |
+          cd custom_components
+          zip -r ../novastar_h.zip novastar_h
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: novastar_h.zip
