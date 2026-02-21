@@ -18,16 +18,28 @@ from .coordinator import NovastarCoordinator
 
 def _layer_is_active(layer: dict[str, Any]) -> bool:
     """Return whether a layer should be treated as active."""
-    return (
-        layer.get("visible") in (1, True)
-        or layer.get("enable") in (1, True)
-        or layer.get("isUsed") in (1, True)
-    )
+    source = layer.get("source")
+    source_type = source.get("sourceType") if isinstance(source, dict) else None
+    if isinstance(source_type, int) and source_type != 0:
+        return True
+
+    window = layer.get("window")
+    if isinstance(window, dict):
+        width = window.get("width")
+        height = window.get("height")
+        if isinstance(width, int) and isinstance(height, int) and width > 0 and height > 0:
+            return True
+
+    return False
 
 
 def _layer_z_order(layer: dict[str, Any]) -> int:
     """Return layer z-order with safe fallback."""
     z_order = layer.get("zOrder")
+    if z_order is None:
+        general = layer.get("general")
+        if isinstance(general, dict):
+            z_order = general.get("zorder")
     if isinstance(z_order, int):
         return z_order
     if isinstance(z_order, float):
@@ -43,11 +55,11 @@ def _layer_source_name(layer: dict[str, Any]) -> str:
         if isinstance(source_name, str) and source_name:
             return source_name
 
-    input_id = layer.get("inputId")
+    input_id = source.get("inputId") if isinstance(source, dict) else layer.get("inputId")
     if isinstance(input_id, int):
         return f"Input {input_id}"
 
-    source_id = layer.get("sourceId")
+    source_id = source.get("sourceId") if isinstance(source, dict) else layer.get("sourceId")
     if isinstance(source_id, int):
         return f"Source {source_id}"
 
@@ -513,12 +525,13 @@ class NovastarTopLayerSourceSensor(CoordinatorEntity[NovastarCoordinator], Senso
             return None
 
         top_layer = max(active_layers, key=_layer_z_order)
+        source = top_layer.get("source")
         return {
             "layer_id": top_layer.get("layerId"),
             "z_order": _layer_z_order(top_layer),
-            "source_type": top_layer.get("sourceType"),
-            "input_id": top_layer.get("inputId"),
-            "source_id": top_layer.get("sourceId"),
+            "source_type": source.get("sourceType") if isinstance(source, dict) else top_layer.get("sourceType"),
+            "input_id": source.get("inputId") if isinstance(source, dict) else top_layer.get("inputId"),
+            "source_id": source.get("sourceId") if isinstance(source, dict) else top_layer.get("sourceId"),
         }
 
 

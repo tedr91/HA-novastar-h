@@ -538,7 +538,7 @@ class NovastarClient:
             {"deviceId": device_id, "screenId": screen_id},
         )
         if data and isinstance(data, dict):
-            layers = data.get("layers")
+            layers = data.get("screenLayers") or data.get("layers")
             if isinstance(layers, list):
                 return [item for item in layers if isinstance(item, dict)]
         return []
@@ -557,20 +557,14 @@ class NovastarClient:
 
     def _layer_signature(self, layer_data: dict[str, Any]) -> str:
         """Build a signature for change detection on list-level layer properties."""
+        general = layer_data.get("general")
+        window = layer_data.get("window")
+        source = layer_data.get("source")
         signature_payload = {
             "layerId": layer_data.get("layerId"),
-            "sourceType": layer_data.get("sourceType"),
-            "lock": layer_data.get("lock"),
-            "freeze": layer_data.get("freeze"),
-            "visible": layer_data.get("visible"),
-            "zOrder": layer_data.get("zOrder"),
-            "x": layer_data.get("x"),
-            "y": layer_data.get("y"),
-            "width": layer_data.get("width"),
-            "height": layer_data.get("height"),
-            "inputId": layer_data.get("inputId"),
-            "sourceId": layer_data.get("sourceId"),
-            "source": layer_data.get("source") if isinstance(layer_data.get("source"), dict) else {},
+            "general": general if isinstance(general, dict) else {},
+            "window": window if isinstance(window, dict) else {},
+            "source": source if isinstance(source, dict) else {},
         }
         return json.dumps(signature_payload, sort_keys=True, default=str)
 
