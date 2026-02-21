@@ -55,7 +55,6 @@ class NovastarState:
     device_id: int = 0
     screen_id: int = 0
     brightness: int = 100
-    temperature: float | None = None  # Backboard temperature in Celsius
     temp_status: int | None = None  # Temperature status (0=normal, 1=warning, etc.)
     device_status: int | None = None  # Device status (0=busy, 1=ready)
     signal_status: int | None = None  # Signal power status from iSignal
@@ -407,7 +406,6 @@ class NovastarClient:
 
         # Get temperature info from device
         temp_data = await self.async_get_device_status_info(device_id)
-        state.temperature = temp_data.get("temperature")
         state.temp_status = temp_data.get("temp_status")
         state.device_status = temp_data.get("device_status")
         state.signal_status = temp_data.get("signal_status")
@@ -420,22 +418,17 @@ class NovastarClient:
         """Get device status info from device/readDetail.
 
         Returns dict with:
-        - temperature: Backboard temperature in Celsius
         - temp_status: Temperature status code
         - device_status: Device status (0=busy, 1=ready)
         - signal_status: Signal power status from iSignal
         """
         data = await self._async_request("device/readDetail", {"deviceId": device_id})
         result: dict[str, Any] = {
-            "temperature": None,
             "temp_status": None,
             "device_status": None,
             "signal_status": None,
         }
         if data and isinstance(data, dict):
-            temp = data.get("backboardTemperature")
-            if temp is not None and isinstance(temp, (int, float)):
-                result["temperature"] = float(temp)
             temp_status = data.get("temp")
             if temp_status is not None and isinstance(temp_status, (int, float)):
                 result["temp_status"] = int(temp_status)
@@ -446,8 +439,3 @@ class NovastarClient:
             if signal_status is not None and isinstance(signal_status, (int, float)):
                 result["signal_status"] = int(signal_status)
         return result
-
-    async def async_get_temperature(self, device_id: int = 0) -> float | None:
-        """Get device backboard temperature in Celsius."""
-        info = await self.async_get_device_status_info(device_id)
-        return info.get("temperature")

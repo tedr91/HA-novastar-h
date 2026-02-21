@@ -105,9 +105,6 @@
       }
     },
     "sensor": {
-      "temperature": {
-        "name": "Temperature"
-      },
       "temp_status": {
         "name": "Temperature Status"
       },
