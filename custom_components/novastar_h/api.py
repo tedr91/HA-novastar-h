@@ -438,20 +438,20 @@ class NovastarClient:
         }
         if data and isinstance(data, dict):
             temp = data.get("backboardTemperature")
-            if temp is not None:
+            if temp is not None and isinstance(temp, (int, float)):
                 result["temperature"] = float(temp)
             temp_status = data.get("temp")
-            if temp_status is not None:
+            if temp_status is not None and isinstance(temp_status, (int, float)):
                 result["temp_status"] = int(temp_status)
             device_status = data.get("status")
-            if device_status is not None:
+            if device_status is not None and isinstance(device_status, (int, float)):
                 result["device_status"] = int(device_status)
             signal_status = data.get("iSignal")
-            if signal_status is not None:
+            if signal_status is not None and isinstance(signal_status, (int, float)):
                 result["signal_status"] = int(signal_status)
             fan_list = data.get("fanList")
             if fan_list is not None and isinstance(fan_list, list):
-                result["fan_status"] = [int(f) for f in fan_list]
+                result["fan_status"] = [int(f) for f in fan_list if isinstance(f, (int, float))]
         return result
 
     async def async_get_temperature_info(
