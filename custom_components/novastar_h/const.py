@@ -23,4 +23,5 @@ PLATFORMS: list[Platform] = [
     Platform.SELECT,
     Platform.NUMBER,
     Platform.MEDIA_PLAYER,
+    Platform.SENSOR,
 ]
