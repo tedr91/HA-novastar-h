@@ -106,6 +106,9 @@ class NovastarClient:
         self._layer_detail_cache: dict[int, dict[str, Any]] = {}
         self._layer_signature_cache: dict[int, str] = {}
         self._layer_refresh_counter = 0
+        self._last_preset_id: int | None = None
+        self._force_refresh_input_details = False
+        self._force_refresh_layer_details = False
 
     @property
     def host(self) -> str:
@@ -409,6 +412,15 @@ class NovastarClient:
             screen_id, device_id
         )
 
+        # If preset changed, force detail refresh for dependent structures
+        if (
+            self._last_preset_id is not None
+            and state.current_preset_id != self._last_preset_id
+        ):
+            self._force_refresh_input_details = True
+            self._force_refresh_layer_details = True
+        self._last_preset_id = state.current_preset_id
+
         # Get brightness
         state.brightness = await self.async_get_brightness(screen_id, device_id)
 
@@ -475,6 +487,8 @@ class NovastarClient:
 
         self._input_refresh_counter += 1
         periodic_refresh = self._input_refresh_counter % 12 == 0
+        force_refresh = self._force_refresh_input_details
+        self._force_refresh_input_details = False
 
         merged_inputs: list[dict[str, Any]] = []
         seen_input_ids: set[int] = set()
@@ -490,7 +504,9 @@ class NovastarClient:
             signature = self._input_signature(input_data)
             cached_signature = self._input_signature_cache.get(input_id)
 
-            should_refresh_detail = periodic_refresh or cached_signature != signature
+            should_refresh_detail = (
+                force_refresh or periodic_refresh or cached_signature != signature
+            )
             if should_refresh_detail:
                 detail = await self.async_get_input_detail(input_id, device_id)
                 if detail is not None:
@@ -516,9 +532,9 @@ class NovastarClient:
     async def async_get_layer_list(
         self, device_id: int = 0, screen_id: int = 0
     ) -> list[dict[str, Any]]:
-        """Read all layers from layer/readList."""
+        """Read all layers from layer/detailList."""
         data = await self._async_request(
-            "layer/readList",
+            "layer/detailList",
             {"deviceId": device_id, "screenId": screen_id},
         )
         if data and isinstance(data, dict):
@@ -568,6 +584,8 @@ class NovastarClient:
 
         self._layer_refresh_counter += 1
         periodic_refresh = self._layer_refresh_counter % 12 == 0
+        force_refresh = self._force_refresh_layer_details
+        self._force_refresh_layer_details = False
 
         merged_layers: list[dict[str, Any]] = []
         seen_layer_ids: set[int] = set()
@@ -583,7 +601,9 @@ class NovastarClient:
             signature = self._layer_signature(layer_data)
             cached_signature = self._layer_signature_cache.get(layer_id)
 
-            should_refresh_detail = periodic_refresh or cached_signature != signature
+            should_refresh_detail = (
+                force_refresh or periodic_refresh or cached_signature != signature
+            )
             if should_refresh_detail:
                 detail = await self.async_get_layer_detail(layer_id, device_id, screen_id)
                 if detail is not None:
