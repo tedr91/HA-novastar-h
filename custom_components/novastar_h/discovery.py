@@ -9,7 +9,6 @@ from dataclasses import dataclass
 
 import aiohttp
 
-from .api import NovastarClient
 from .const import DEFAULT_PORT
 
 _LOGGER = logging.getLogger(__name__)
@@ -65,19 +64,35 @@ async def probe_host(host: str, port: int = DEFAULT_PORT) -> DiscoveredDevice | 
         except (asyncio.TimeoutError, OSError, ConnectionRefusedError):
             return None
 
-        # Port is open, try Novastar API
-        client = NovastarClient(host=host, port=port)
-        device_info = await client.async_get_device_info()
+        # Port is open, check if it responds like a Novastar device
+        # Try HTTP request and look for gunicorn server header
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=PROBE_TIMEOUT)
+            ) as session:
+                async with session.get(f"http://{host}:{port}/") as response:
+                    server = response.headers.get("Server", "")
+                    # Novastar devices use gunicorn
+                    if "gunicorn" in server.lower():
+                        return DiscoveredDevice(
+                            host=host,
+                            port=port,
+                            name=f"Novastar @ {host}",
+                            model="",
+                            serial="",
+                        )
+        except Exception:
+            pass
 
-        if device_info.device_id > 0 or device_info.serial:
-            name = device_info.name or f"Novastar {device_info.model_id or 'H Series'}"
-            return DiscoveredDevice(
-                host=host,
-                port=port,
-                name=name,
-                model=str(device_info.model_id) if device_info.model_id else "",
-                serial=device_info.serial,
-            )
+        # If HTTP check failed, still return as potential device on port 8000
+        # Since port 8000 with TCP open is unusual
+        return DiscoveredDevice(
+            host=host,
+            port=port,
+            name=f"Novastar @ {host}",
+            model="",
+            serial="",
+        )
     except Exception:
         pass
 

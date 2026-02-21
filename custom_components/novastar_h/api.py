@@ -231,13 +231,13 @@ class NovastarClient:
 
     async def async_can_connect(self) -> bool:
         """Test if we can connect to the device."""
-        result = await self._async_request("device/readDetail", {})
+        result = await self._async_request("device/readDetail", {"deviceId": 0})
         return result is not None
 
     async def async_get_device_info(self) -> NovastarDeviceInfo:
         """Get device information."""
         info = NovastarDeviceInfo()
-        data = await self._async_request("device/readDetail", {})
+        data = await self._async_request("device/readDetail", {"deviceId": 0})
 
         if data:
             info.device_id = data.get("deviceId", 0)
