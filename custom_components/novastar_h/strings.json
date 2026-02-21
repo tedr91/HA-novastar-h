@@ -116,9 +116,6 @@
       },
       "signal_status": {
         "name": "Signal Power Status"
-      },
-      "fan_status": {
-        "name": "Fan Status"
       }
     }
   }

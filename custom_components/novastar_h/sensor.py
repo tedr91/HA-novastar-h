@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -32,7 +30,6 @@ async def async_setup_entry(
         NovastarTempStatusSensor(entry, coordinator, device_info),
         NovastarDeviceStatusSensor(entry, coordinator, device_info),
         NovastarSignalStatusSensor(entry, coordinator, device_info),
-        NovastarFanStatusSensor(entry, coordinator, device_info),
     ])
 
 
@@ -255,78 +252,3 @@ class NovastarSignalStatusSensor(CoordinatorEntity[NovastarCoordinator], SensorE
         return None
 
 
-class NovastarFanStatusSensor(CoordinatorEntity[NovastarCoordinator], SensorEntity):
-    """Sensor entity for fan status."""
-
-    _attr_has_entity_name = True
-    _attr_name = "Fan Status"
-    _attr_translation_key = "fan_status"
-
-    # Map status codes to human-readable values
-    FAN_STATUS_MAP = {
-        0: "Off",
-        1: "Running",
-        2: "Error",
-    }
-
-    def __init__(
-        self,
-        entry: ConfigEntry,
-        coordinator: NovastarCoordinator,
-        device_info: NovastarDeviceInfo,
-    ) -> None:
-        """Initialize the sensor entity."""
-        super().__init__(coordinator)
-        self._entry = entry
-        self._device_info = device_info
-        self._attr_unique_id = f"{entry.entry_id}_fan_status"
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        model = "H Series"
-        if self._device_info.model_id:
-            model = f"H Series (Model {self._device_info.model_id})"
-        return {
-            "identifiers": {(DOMAIN, self._entry.entry_id)},
-            "manufacturer": "Novastar",
-            "model": model,
-            "name": self._entry.data.get(CONF_NAME, DEFAULT_NAME),
-            "sw_version": self._device_info.firmware,
-            "serial_number": self._device_info.serial,
-        }
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self.coordinator.last_update_success
-
-    @property
-    def native_value(self) -> str | None:
-        """Return current fan status summary."""
-        if self.coordinator.data and self.coordinator.data.fan_status:
-            fan_list = self.coordinator.data.fan_status
-            # Count fans by status
-            running = sum(1 for f in fan_list if f == 1)
-            errors = sum(1 for f in fan_list if f == 2)
-            total = len(fan_list)
-            
-            if errors > 0:
-                return f"{errors}/{total} Error"
-            if running == total:
-                return "All Running"
-            if running == 0:
-                return "All Off"
-            return f"{running}/{total} Running"
-        return None
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any] | None:
-        """Return detailed fan status as attributes."""
-        if self.coordinator.data and self.coordinator.data.fan_status:
-            fan_list = self.coordinator.data.fan_status
-            attrs = {}
-            for i, status in enumerate(fan_list):
-                attrs[f"fan_{i + 1}"] = self.FAN_STATUS_MAP.get(status, f"Unknown ({status})")
-            return attrs
-        return None
