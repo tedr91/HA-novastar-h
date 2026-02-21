@@ -57,6 +57,9 @@ class NovastarState:
     brightness: int = 100
     temperature: float | None = None  # Backboard temperature in Celsius
     temp_status: int | None = None  # Temperature status (0=normal, 1=warning, etc.)
+    device_status: int | None = None  # Device status (0=busy, 1=ready)
+    signal_status: int | None = None  # Signal power status from iSignal
+    fan_status: list[int] = field(default_factory=list)  # Fan status list from fanList
     ftb_active: bool = False  # Fade to black (blackout) active
     freeze_active: bool = False  # Screen freeze active
     current_preset_id: int = -1  # -1 means no preset active
@@ -404,25 +407,34 @@ class NovastarClient:
         state.brightness = await self.async_get_brightness(screen_id, device_id)
 
         # Get temperature info from device
-        temp_data = await self.async_get_temperature_info(device_id)
+        temp_data = await self.async_get_device_status_info(device_id)
         state.temperature = temp_data.get("temperature")
         state.temp_status = temp_data.get("temp_status")
+        state.device_status = temp_data.get("device_status")
+        state.signal_status = temp_data.get("signal_status")
+        state.fan_status = temp_data.get("fan_status") or []
 
         return state
 
-    async def async_get_temperature_info(
+    async def async_get_device_status_info(
         self, device_id: int = 0
-    ) -> dict[str, float | int | None]:
-        """Get device temperature info.
+    ) -> dict[str, Any]:
+        """Get device status info from device/readDetail.
 
         Returns dict with:
         - temperature: Backboard temperature in Celsius
         - temp_status: Temperature status code
+        - device_status: Device status (0=busy, 1=ready)
+        - signal_status: Signal power status from iSignal
+        - fan_status: List of fan status values from fanList
         """
         data = await self._async_request("device/readDetail", {"deviceId": device_id})
-        result: dict[str, float | int | None] = {
+        result: dict[str, Any] = {
             "temperature": None,
             "temp_status": None,
+            "device_status": None,
+            "signal_status": None,
+            "fan_status": [],
         }
         if data and isinstance(data, dict):
             temp = data.get("backboardTemperature")
@@ -431,7 +443,22 @@ class NovastarClient:
             temp_status = data.get("temp")
             if temp_status is not None:
                 result["temp_status"] = int(temp_status)
+            device_status = data.get("status")
+            if device_status is not None:
+                result["device_status"] = int(device_status)
+            signal_status = data.get("iSignal")
+            if signal_status is not None:
+                result["signal_status"] = int(signal_status)
+            fan_list = data.get("fanList")
+            if fan_list is not None and isinstance(fan_list, list):
+                result["fan_status"] = [int(f) for f in fan_list]
         return result
+
+    async def async_get_temperature_info(
+        self, device_id: int = 0
+    ) -> dict[str, Any]:
+        """Get device temperature info (deprecated, use async_get_device_status_info)."""
+        return await self.async_get_device_status_info(device_id)
 
     async def async_get_temperature(self, device_id: int = 0) -> float | None:
         """Get device backboard temperature in Celsius."""
