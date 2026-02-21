@@ -1,23 +1,6 @@
 {
   "config": {
     "step": {
-      "user": {
-        "title": "Add Novastar H Series Processor",
-        "description": "Enter the connection details for your Novastar H series processor.",
-        "data": {
-          "host": "Host",
-          "port": "Port",
-          "project_id": "Project ID",
-          "secret_key": "Secret Key",
-          "encryption": "Enable Encryption",
-          "name": "Name"
-        },
-        "data_description": {
-          "project_id": "The project ID from your Novastar device settings",
-          "secret_key": "The secret key from your Novastar device settings",
-          "encryption": "Enable encrypted communication with the device"
-        }
-      },
       "discovery_confirm": {
         "title": "Novastar Processor Discovered",
         "description": "A Novastar processor was found at {host}.\n\nDevice: {name}\n\nEnter the authentication credentials from your device settings.",
@@ -39,7 +22,8 @@
     "abort": {
       "already_configured": "This device is already configured.",
       "cannot_connect": "Unable to connect to the discovered device.",
-      "no_host": "Could not determine host from discovery."
+      "no_host": "Could not determine host from discovery.",
+      "discovery_only": "This integration uses automatic discovery. Novastar processors will appear in the Discovered section when found on your network."
     }
   },
   "entity": {

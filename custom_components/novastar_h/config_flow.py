@@ -37,55 +37,8 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Handle the initial step."""
-        errors: dict[str, str] = {}
-
-        if user_input is not None:
-            host = user_input[CONF_HOST]
-            port = user_input.get(CONF_PORT, DEFAULT_PORT)
-            name = user_input.get(CONF_NAME, DEFAULT_NAME)
-            project_id = user_input[CONF_PROJECT_ID]
-            secret_key = user_input[CONF_SECRET_KEY]
-            encryption = user_input.get(CONF_ENCRYPTION, DEFAULT_ENCRYPTION)
-
-            client = NovastarClient(
-                host=host,
-                port=port,
-                project_id=project_id,
-                secret_key=secret_key,
-                encryption=encryption,
-            )
-            if await client.async_can_connect():
-                await self.async_set_unique_id(f"novastar_h_{host}_{port}")
-                self._abort_if_unique_id_configured()
-
-                return self.async_create_entry(
-                    title=name,
-                    data={
-                        CONF_HOST: host,
-                        CONF_PORT: port,
-                        CONF_NAME: name,
-                        CONF_PROJECT_ID: project_id,
-                        CONF_SECRET_KEY: secret_key,
-                        CONF_ENCRYPTION: encryption,
-                    },
-                )
-            errors["base"] = "cannot_connect"
-
-        return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_HOST): str,
-                    vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-                    vol.Required(CONF_PROJECT_ID): str,
-                    vol.Required(CONF_SECRET_KEY): str,
-                    vol.Optional(CONF_ENCRYPTION, default=DEFAULT_ENCRYPTION): bool,
-                    vol.Optional(CONF_NAME, default=DEFAULT_NAME): str,
-                }
-            ),
-            errors=errors,
-        )
+        """Handle the initial step - redirect to discovery."""
+        return self.async_abort(reason="discovery_only")
 
     async def async_step_ssdp(
         self, discovery_info: ssdp.SsdpServiceInfo
@@ -98,7 +51,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
         if location:
             parsed = urlparse(location)
             self._discovered_host = parsed.hostname
-            self._discovered_port = parsed.port or DEFAULT_PORT
+            self._discovered_port = DEFAULT_PORT  # Novastar API uses port 8000
         else:
             return self.async_abort(reason="no_host")
 
@@ -109,25 +62,15 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
             or DEFAULT_NAME
         )
 
-        # Validate this is actually a Novastar device
-        client = NovastarClient(host=self._discovered_host, port=self._discovered_port)
-        if not await client.async_can_connect():
-            return self.async_abort(reason="cannot_connect")
-
-        # Get device info for better identification
-        device_info = await client.async_get_device_info()
-        if device_info.name:
-            self._discovered_name = device_info.name
-        elif device_info.model:
-            self._discovered_name = f"Novastar {device_info.model}"
-
-        # Set unique ID based on serial or host
-        unique_id = device_info.serial or f"novastar_h_{self._discovered_host}_{self._discovered_port}"
+        # Set unique ID based on host (serial requires authentication)
+        unique_id = f"novastar_h_{self._discovered_host}"
         await self.async_set_unique_id(unique_id)
         self._abort_if_unique_id_configured(
-            updates={CONF_HOST: self._discovered_host, CONF_PORT: self._discovered_port}
+            updates={CONF_HOST: self._discovered_host}
         )
 
+        # Show discovery in UI - credentials will be validated in confirm step
+        self.context["title_placeholders"] = {"name": self._discovered_name}
         return await self.async_step_discovery_confirm()
 
     async def async_step_zeroconf(
@@ -137,51 +80,53 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
         _LOGGER.debug("Zeroconf discovery: %s", discovery_info)
 
         self._discovered_host = str(discovery_info.host)
-        self._discovered_port = discovery_info.port or DEFAULT_PORT
+        self._discovered_port = DEFAULT_PORT  # Novastar API uses port 8000
         self._discovered_name = discovery_info.name.removesuffix("._novastar._tcp.local.")
 
-        # Validate this is actually a Novastar device
-        client = NovastarClient(host=self._discovered_host, port=self._discovered_port)
-        if not await client.async_can_connect():
-            return self.async_abort(reason="cannot_connect")
-
-        # Get device info for better identification
-        device_info = await client.async_get_device_info()
-        if device_info.name:
-            self._discovered_name = device_info.name
-        elif device_info.model:
-            self._discovered_name = f"Novastar {device_info.model}"
-
-        # Set unique ID based on serial or host
-        unique_id = device_info.serial or f"novastar_h_{self._discovered_host}_{self._discovered_port}"
+        # Set unique ID based on host (serial requires authentication)
+        unique_id = f"novastar_h_{self._discovered_host}"
         await self.async_set_unique_id(unique_id)
         self._abort_if_unique_id_configured(
-            updates={CONF_HOST: self._discovered_host, CONF_PORT: self._discovered_port}
+            updates={CONF_HOST: self._discovered_host}
         )
 
+        # Show discovery in UI - credentials will be validated in confirm step
+        self.context["title_placeholders"] = {"name": self._discovered_name}
         return await self.async_step_discovery_confirm()
 
     async def async_step_discovery_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
         """Handle user confirmation of discovered device."""
+        errors: dict[str, str] = {}
+
         if user_input is not None:
             name = user_input.get(CONF_NAME, self._discovered_name)
             project_id = user_input[CONF_PROJECT_ID]
             secret_key = user_input[CONF_SECRET_KEY]
             encryption = user_input.get(CONF_ENCRYPTION, DEFAULT_ENCRYPTION)
 
-            return self.async_create_entry(
-                title=name,
-                data={
-                    CONF_HOST: self._discovered_host,
-                    CONF_PORT: self._discovered_port,
-                    CONF_NAME: name,
-                    CONF_PROJECT_ID: project_id,
-                    CONF_SECRET_KEY: secret_key,
-                    CONF_ENCRYPTION: encryption,
-                },
+            # Validate credentials by testing connection
+            client = NovastarClient(
+                host=self._discovered_host,
+                port=self._discovered_port,
+                project_id=project_id,
+                secret_key=secret_key,
+                encryption=encryption,
             )
+            if await client.async_can_connect():
+                return self.async_create_entry(
+                    title=name,
+                    data={
+                        CONF_HOST: self._discovered_host,
+                        CONF_PORT: self._discovered_port,
+                        CONF_NAME: name,
+                        CONF_PROJECT_ID: project_id,
+                        CONF_SECRET_KEY: secret_key,
+                        CONF_ENCRYPTION: encryption,
+                    },
+                )
+            errors["base"] = "cannot_connect"
 
         placeholders = {
             "name": self._discovered_name,
@@ -199,4 +144,5 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                     vol.Optional(CONF_NAME, default=self._discovered_name): str,
                 }
             ),
+            errors=errors,
         )
