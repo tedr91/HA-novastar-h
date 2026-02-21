@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 
 import voluptuous as vol
 from homeassistant.components import ssdp, zeroconf
-from homeassistant.config_entries import ConfigEntry, ConfigFlow, FlowResult, OptionsFlow
+from homeassistant.config_entries import ConfigFlow, FlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.core import callback
 
@@ -36,7 +36,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry):
         """Get the options flow for this handler."""
-        return NovastarOptionsFlowHandler(config_entry)
+        return NovastarOptionsFlowHandler()
 
     def __init__(self) -> None:
         """Initialize the config flow."""
@@ -322,10 +322,6 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
 
 class NovastarOptionsFlowHandler(OptionsFlow):
     """Handle options flow for Novastar H Series."""
-
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialize options flow."""
-        super().__init__(config_entry)
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
