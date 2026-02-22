@@ -52,7 +52,7 @@ SERVICE_SEND_RAW_COMMAND_SCHEMA = vol.Schema(
 
 SERVICE_SET_LAYER_SOURCE_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HOST): cv.string,
+        vol.Optional(CONF_HOST): cv.string,
         vol.Required(ATTR_LAYER_ID): vol.Coerce(int),
         vol.Optional(ATTR_INPUT_ID): vol.Any(None, vol.Coerce(int)),
         vol.Optional(ATTR_INTERFACE_TYPE, default=0): vol.Coerce(int),
@@ -63,7 +63,7 @@ SERVICE_SET_LAYER_SOURCE_SCHEMA = vol.Schema(
 
 SERVICE_SET_ACTIVE_PRESET_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HOST): cv.string,
+        vol.Optional(CONF_HOST): cv.string,
         vol.Required(ATTR_PRESET_ID): vol.Coerce(int),
     }
 )
@@ -104,6 +104,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "coordinator": coordinator,
         "device_info": device_info,
     }
+
+    def resolve_coordinator_by_host(
+        host: str | None,
+    ) -> tuple[NovastarCoordinator | None, str | None, str | None]:
+        """Resolve a coordinator from optional host input."""
+        coordinators: list[tuple[str, NovastarCoordinator]] = []
+        for data in hass.data[DOMAIN].values():
+            if isinstance(data, dict) and "client" in data and "coordinator" in data:
+                coordinators.append((data["client"].host, data["coordinator"]))
+
+        if host:
+            for known_host, coordinator in coordinators:
+                if known_host == host:
+                    return coordinator, known_host, None
+            return None, host, f"No Novastar device found at {host}"
+
+        if len(coordinators) == 1:
+            known_host, coordinator = coordinators[0]
+            return coordinator, known_host, None
+
+        if not coordinators:
+            return None, None, "No Novastar devices are currently available"
+
+        return (
+            None,
+            None,
+            "Multiple Novastar devices configured; specify host for this service call",
+        )
 
     # Register send_raw_command service if not already registered
     # Check is done at call time via options/data
@@ -154,22 +182,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.services.has_service(DOMAIN, SERVICE_SET_LAYER_SOURCE):
         async def async_set_layer_source(call: ServiceCall) -> None:
             """Handle set_layer_source service call."""
-            host = call.data[CONF_HOST]
+            host = call.data.get(CONF_HOST)
             layer_id = call.data[ATTR_LAYER_ID]
             input_id = call.data.get(ATTR_INPUT_ID)
             interface_type = call.data[ATTR_INTERFACE_TYPE]
             slot_id = call.data[ATTR_SLOT_ID]
             crop_id = call.data[ATTR_CROP_ID]
 
-            coordinator_found: NovastarCoordinator | None = None
-            for data in hass.data[DOMAIN].values():
-                if isinstance(data, dict) and "client" in data and "coordinator" in data:
-                    if data["client"].host == host:
-                        coordinator_found = data["coordinator"]
-                        break
+            coordinator_found, resolved_host, error_message = resolve_coordinator_by_host(
+                host
+            )
 
             if coordinator_found is None:
-                _LOGGER.error("No Novastar device found at %s", host)
+                _LOGGER.error(error_message)
                 return
 
             result = await coordinator_found.async_set_layer_source(
@@ -181,7 +206,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
             if not result:
                 _LOGGER.warning(
-                    "Failed to set layer source for host=%s layer_id=%s", host, layer_id
+                    "Failed to set layer source for host=%s layer_id=%s",
+                    resolved_host,
+                    layer_id,
                 )
 
         hass.services.async_register(
@@ -194,25 +221,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.services.has_service(DOMAIN, SERVICE_SET_ACTIVE_PRESET):
         async def async_set_active_preset(call: ServiceCall) -> None:
             """Handle set_active_preset service call."""
-            host = call.data[CONF_HOST]
+            host = call.data.get(CONF_HOST)
             preset_id = call.data[ATTR_PRESET_ID]
 
-            coordinator_found: NovastarCoordinator | None = None
-            for data in hass.data[DOMAIN].values():
-                if isinstance(data, dict) and "client" in data and "coordinator" in data:
-                    if data["client"].host == host:
-                        coordinator_found = data["coordinator"]
-                        break
+            coordinator_found, resolved_host, error_message = resolve_coordinator_by_host(
+                host
+            )
 
             if coordinator_found is None:
-                _LOGGER.error("No Novastar device found at %s", host)
+                _LOGGER.error(error_message)
                 return
 
             result = await coordinator_found.async_set_active_preset(preset_id)
             if not result:
                 _LOGGER.warning(
                     "Failed to set active preset for host=%s preset_id=%s",
-                    host,
+                    resolved_host,
                     preset_id,
                 )
 

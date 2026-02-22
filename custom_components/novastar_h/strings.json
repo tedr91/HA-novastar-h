@@ -175,11 +175,11 @@
     },
     "set_layer_source": {
       "name": "Set Layer Source",
-      "description": "Set or clear the source routed to a specific layer.",
+      "description": "Set or clear the source routed to a specific layer. Host is optional when only one Novastar device is configured.",
       "fields": {
         "host": {
           "name": "Host",
-          "description": "The IP address of the Novastar processor."
+          "description": "Optional IP address of the Novastar processor. Required when multiple Novastar devices are configured."
         },
         "layer_id": {
           "name": "Layer ID",
@@ -205,11 +205,11 @@
     },
     "set_active_preset": {
       "name": "Set Active Preset",
-      "description": "Set the active preset on a Novastar processor.",
+      "description": "Set the active preset on a Novastar processor. Host is optional when only one Novastar device is configured.",
       "fields": {
         "host": {
           "name": "Host",
-          "description": "The IP address of the Novastar processor."
+          "description": "Optional IP address of the Novastar processor. Required when multiple Novastar devices are configured."
         },
         "preset_id": {
           "name": "Preset ID",

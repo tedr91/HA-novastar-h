@@ -26,12 +26,12 @@ send_raw_command:
 
 set_layer_source:
   name: Set Layer Source
-  description: Set or clear the source routed to a specific layer.
+  description: Set or clear the source routed to a specific layer. Host is optional when only one Novastar device is configured.
   fields:
     host:
       name: Host
-      description: The IP address of the Novastar processor.
-      required: true
+      description: Optional IP address of the Novastar processor. Required when multiple Novastar devices are configured.
+      required: false
       example: "192.168.1.100"
       selector:
         text:
@@ -83,12 +83,12 @@ set_layer_source:
 
 set_active_preset:
   name: Set Active Preset
-  description: Set the active preset on a Novastar processor.
+  description: Set the active preset on a Novastar processor. Host is optional when only one Novastar device is configured.
   fields:
     host:
       name: Host
-      description: The IP address of the Novastar processor.
-      required: true
+      description: Optional IP address of the Novastar processor. Required when multiple Novastar devices are configured.
+      required: false
       example: "192.168.1.100"
       selector:
         text:
