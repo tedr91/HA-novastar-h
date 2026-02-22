@@ -767,8 +767,9 @@ class NovastarClient:
             )
             return False
 
-        layers_key = "screenLayers" if isinstance(layout_data.get("screenLayers"), list) else "layers"
-        raw_layers = layout_data.get(layers_key)
+        raw_layers = layout_data.get("screenLayers")
+        if not isinstance(raw_layers, list):
+            raw_layers = layout_data.get("layers")
         if not isinstance(raw_layers, list):
             self._debug_log(
                 "Audio input set aborted: no layers in detailList host=%s keys=%s",
@@ -777,41 +778,80 @@ class NovastarClient:
             )
             return False
 
-        updated_layers: list[dict[str, Any]] = []
+        crafted_layers: list[dict[str, Any]] = []
         selected_found = False
         for layer in raw_layers:
             if not isinstance(layer, dict):
                 continue
-            layer_copy = dict(layer)
-            layer_id = self._coerce_audio_id(layer_copy.get("layerId"))
-            audio_status = layer_copy.get("audioStatus")
+
+            layer_id = self._coerce_audio_id(layer.get("layerId"))
+            if layer_id is None:
+                continue
+
+            general = layer.get("general")
+            if not isinstance(general, dict):
+                general = {}
+
+            source = layer.get("source")
+            if not isinstance(source, dict):
+                source = {}
+
+            window = layer.get("window")
+            if not isinstance(window, dict):
+                window = {}
+
+            audio_status = layer.get("audioStatus")
             if not isinstance(audio_status, dict):
                 audio_status = {}
+
             updated_audio_status = dict(audio_status)
             if layer_id == selected_layer_id:
                 updated_audio_status["isOpen"] = 1
                 selected_found = True
             else:
                 updated_audio_status["isOpen"] = 0
-            layer_copy["audioStatus"] = updated_audio_status
-            updated_layers.append(layer_copy)
+
+            crafted_layer = {
+                "layerId": int(layer_id),
+                "general": {
+                    "layerId": int(self._coerce_audio_id(general.get("layerId")) or layer_id),
+                    "zorder": int(general.get("zorder", 0)),
+                    "name": str(general.get("name", f"Layer {layer_id}")),
+                    "isBackground": bool(general.get("isBackground", False)),
+                    "isFreeze": bool(general.get("isFreeze", False)),
+                    "flipType": int(general.get("flipType", 0)),
+                },
+                "lock": int(layer.get("lock", 0)),
+                "source": {
+                    "sourceType": int(source.get("sourceType", 0)),
+                    "inputId": int(source.get("inputId", 0)),
+                    "cropId": int(source.get("cropId", 255)),
+                    "interfaceType": int(source.get("interfaceType", 0)),
+                    "connectCapacity": int(source.get("connectCapacity", 0)),
+                    "name": str(source.get("name", "")),
+                },
+                "window": {
+                    "width": int(window.get("width", 0)),
+                    "height": int(window.get("height", 0)),
+                    "x": int(window.get("x", 0)),
+                    "y": int(window.get("y", 0)),
+                },
+                "audioStatus": updated_audio_status,
+            }
+            crafted_layers.append(crafted_layer)
 
         if not selected_found:
             self._debug_log(
                 "Audio input set aborted: selected layer not found selected_layer_id=%s available=%s",
                 selected_layer_id,
-                [self._coerce_audio_id(layer.get("layerId")) for layer in updated_layers],
+                [self._coerce_audio_id(layer.get("layerId")) for layer in crafted_layers],
             )
             return False
 
         write_payload = {
-            **detail_payload,
-            **{
-                key: value
-                for key, value in layout_data.items()
-                if key not in ("screenLayers", "layers")
-            },
-            layers_key: updated_layers,
+            "deviceId": int(device_id),
+            "screenId": int(screen_id),
+            "layers": crafted_layers,
         }
 
         self._debug_log(
