@@ -757,54 +757,103 @@ class NovastarClient:
         screen_id: int = 0,
         device_id: int = 0,
     ) -> bool:
-        """Set active audio input with endpoint fallbacks."""
-        payload_base = {
-            "screenId": int(screen_id),
-            "deviceId": int(device_id),
-        }
-        screen_detail_data = await self._async_request("screen/readDetail", payload_base)
-        merged_audio_payload: dict[str, Any] | None = None
-        if isinstance(screen_detail_data, dict):
-            audio_data = screen_detail_data.get("audio")
-            if isinstance(audio_data, dict):
-                merged_audio_payload = dict(audio_data)
-                merged_audio_payload["inputChannelMode"] = int(input_id)
+        """Set active audio input by toggling layer audioStatus.isOpen."""
+        selected_layer_id = int(input_id)
+        layer_items = await self.async_get_layers_with_details(
+            device_id=int(device_id),
+            screen_id=int(screen_id),
+        )
 
-        candidates = [
-            (
-                "screen/writeDetail",
-                {
-                    **payload_base,
-                    "audio": merged_audio_payload,
-                },
+        audio_layers: list[tuple[int, dict[str, Any]]] = []
+        for layer in layer_items:
+            if not isinstance(layer, dict):
+                continue
+            layer_id = self._coerce_audio_id(layer.get("layerId"))
+            if layer_id is None:
+                continue
+            audio_status = layer.get("audioStatus")
+            if not isinstance(audio_status, dict):
+                continue
+            if self._coerce_audio_id(audio_status.get("isAvailable")) != 1:
+                continue
+            audio_layers.append((layer_id, audio_status))
+
+        if not audio_layers:
+            return False
+
+        if not any(layer_id == selected_layer_id for layer_id, _ in audio_layers):
+            return False
+
+        any_layer_updated = False
+        selected_layer_updated = False
+
+        for layer_id, current_audio_status in audio_layers:
+            should_open = 1 if layer_id == selected_layer_id else 0
+
+            desired_audio_status = dict(current_audio_status)
+            desired_audio_status["isOpen"] = should_open
+
+            payload_base = {
+                "screenId": int(screen_id),
+                "deviceId": int(device_id),
+                "layerId": int(layer_id),
+            }
+
+            layer_detail = await self.async_get_layer_detail(
+                layer_id=layer_id,
+                device_id=int(device_id),
+                screen_id=int(screen_id),
             )
-            if merged_audio_payload is not None
-            else None,
-            ("audio/writeInput", {**payload_base, "audioInputId": int(input_id)}),
-            ("audio/writeInput", {**payload_base, "inputId": int(input_id)}),
-            (
-                "audio/writeInput",
-                {**payload_base, "inputChannelMode": int(input_id)},
-            ),
-            ("screen/writeAudioInput", {**payload_base, "inputId": int(input_id)}),
-            (
-                "screen/writeAudioInput",
-                {**payload_base, "inputChannelMode": int(input_id)},
-            ),
-            (
-                "screen/writeDetail",
-                {
-                    **payload_base,
-                    "audio": {
-                        "inputChannelMode": int(input_id),
+            merged_detail_payload: dict[str, Any] | None = None
+            if isinstance(layer_detail, dict):
+                merged_detail_payload = dict(layer_detail)
+                merged_detail_payload["audioStatus"] = desired_audio_status
+                merged_detail_payload.update(payload_base)
+
+            candidates = [
+                ("layer/writeDetail", merged_detail_payload)
+                if merged_detail_payload is not None
+                else None,
+                (
+                    "layer/writeDetail",
+                    {
+                        **payload_base,
+                        "audioStatus": desired_audio_status,
                     },
-                },
-            ),
-            ("audio/write", {**payload_base, "audioInputId": int(input_id)}),
-        ]
-        valid_candidates = [c for c in candidates if c is not None]
-        result = await self._async_request_first_success(valid_candidates)
-        return result is not None
+                ),
+                (
+                    "layer/writeAudioStatus",
+                    {
+                        **payload_base,
+                        "audioStatus": desired_audio_status,
+                    },
+                ),
+                (
+                    "layer/writeAudioStatus",
+                    {
+                        **payload_base,
+                        "isOpen": should_open,
+                    },
+                ),
+                (
+                    "layer/writeAudio",
+                    {
+                        **payload_base,
+                        "isOpen": should_open,
+                    },
+                ),
+            ]
+            valid_candidates = [c for c in candidates if c is not None]
+            result = await self._async_request_first_success(valid_candidates)
+            if result is not None:
+                any_layer_updated = True
+                if layer_id == selected_layer_id:
+                    selected_layer_updated = True
+
+        if any_layer_updated:
+            self._force_refresh_layer_details = True
+
+        return any_layer_updated and selected_layer_updated
 
     async def async_set_audio_output(
         self,
@@ -1070,11 +1119,13 @@ class NovastarClient:
         general = layer_data.get("general")
         window = layer_data.get("window")
         source = layer_data.get("source")
+        audio_status = layer_data.get("audioStatus")
         signature_payload = {
             "layerId": layer_data.get("layerId"),
             "general": general if isinstance(general, dict) else {},
             "window": window if isinstance(window, dict) else {},
             "source": source if isinstance(source, dict) else {},
+            "audioStatus": audio_status if isinstance(audio_status, dict) else {},
         }
         return json.dumps(signature_payload, sort_keys=True, default=str)
 
@@ -1117,6 +1168,8 @@ class NovastarClient:
             cached_detail = self._layer_detail_cache.get(layer_id)
             if cached_detail and isinstance(cached_detail, dict):
                 merged = {**layer_data, **cached_detail}
+                if isinstance(layer_data.get("audioStatus"), dict):
+                    merged["audioStatus"] = layer_data["audioStatus"]
             else:
                 merged = dict(layer_data)
             merged_layers.append(merged)
