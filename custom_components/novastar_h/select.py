@@ -5,7 +5,7 @@ from typing import Any
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_NAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -66,18 +66,55 @@ async def async_setup_entry(
     """Set up Novastar select entities."""
     coordinator: NovastarCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     device_info: NovastarDeviceInfo = hass.data[DOMAIN][entry.entry_id]["device_info"]
-    entities: list[SelectEntity] = [NovastarPresetSelect(entry, coordinator, device_info)]
+    known_layer_ids: set[int] = set()
 
-    if coordinator.data:
+    def _current_layer_ids() -> list[int]:
+        """Return sorted current layer IDs from coordinator data."""
+        if not coordinator.data:
+            return []
+
+        layer_ids: set[int] = set()
         for layer in coordinator.data.layers:
             layer_id = _coerce_int(layer.get("layerId"))
-            if layer_id is None:
-                continue
-            entities.append(
+            if layer_id is not None:
+                layer_ids.add(layer_id)
+        return sorted(layer_ids)
+
+    @callback
+    def _add_missing_layer_entities() -> None:
+        """Create new layer source selects for layers discovered later."""
+        new_layer_ids = [
+            layer_id for layer_id in _current_layer_ids() if layer_id not in known_layer_ids
+        ]
+        if not new_layer_ids:
+            return
+
+        known_layer_ids.update(new_layer_ids)
+        async_add_entities(
+            [
                 NovastarLayerSourceSelect(entry, coordinator, device_info, layer_id)
-            )
+                for layer_id in new_layer_ids
+            ]
+        )
+
+    entities: list[SelectEntity] = [NovastarPresetSelect(entry, coordinator, device_info)]
+    initial_layer_ids = _current_layer_ids()
+    known_layer_ids.update(initial_layer_ids)
+    entities.extend(
+        [
+            NovastarLayerSourceSelect(entry, coordinator, device_info, layer_id)
+            for layer_id in initial_layer_ids
+        ]
+    )
 
     async_add_entities(entities)
+
+    @callback
+    def _handle_coordinator_update() -> None:
+        """React to coordinator updates and add new layer entities."""
+        _add_missing_layer_entities()
+
+    entry.async_on_unload(coordinator.async_add_listener(_handle_coordinator_update))
 
 
 class NovastarPresetSelect(CoordinatorEntity[NovastarCoordinator], SelectEntity):
