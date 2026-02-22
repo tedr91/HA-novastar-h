@@ -509,6 +509,45 @@ class NovastarClient:
         normalized.sort(key=lambda entry: entry["id"])
         return normalized
 
+    def _extract_audio_options_from_container(
+        self,
+        container: dict[str, Any],
+        input_keys: tuple[str, ...],
+        output_keys: tuple[str, ...],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Extract normalized audio input/output options from a container dict."""
+        normalized_inputs: list[dict[str, Any]] = []
+        normalized_outputs: list[dict[str, Any]] = []
+
+        for key in input_keys:
+            raw_inputs = container.get(key)
+            if isinstance(raw_inputs, list):
+                normalized_inputs = self._normalize_audio_options(
+                    raw_inputs,
+                    ("audioInputId", "inputId", "inputChannelMode", "id"),
+                    "Audio Input",
+                )
+                if normalized_inputs:
+                    break
+
+        for key in output_keys:
+            raw_outputs = container.get(key)
+            if isinstance(raw_outputs, list):
+                normalized_outputs = self._normalize_audio_options(
+                    raw_outputs,
+                    (
+                        "audioOutputId",
+                        "outputId",
+                        "outputChannelMode",
+                        "id",
+                    ),
+                    "Audio Output",
+                )
+                if normalized_outputs:
+                    break
+
+        return normalized_inputs, normalized_outputs
+
     def _coerce_audio_id(self, value: Any) -> int | None:
         """Convert supported values to integer audio id."""
         if isinstance(value, bool):
@@ -555,21 +594,15 @@ class NovastarClient:
         }
 
         if isinstance(list_data, dict):
-            raw_inputs = list_data.get("inputs")
-            if isinstance(raw_inputs, list):
-                result["inputs"] = self._normalize_audio_options(
-                    raw_inputs,
-                    ("audioInputId", "inputId", "id"),
-                    "Audio Input",
-                )
-
-            raw_outputs = list_data.get("outputs")
-            if isinstance(raw_outputs, list):
-                result["outputs"] = self._normalize_audio_options(
-                    raw_outputs,
-                    ("audioOutputId", "outputId", "id"),
-                    "Audio Output",
-                )
+            normalized_inputs, normalized_outputs = self._extract_audio_options_from_container(
+                list_data,
+                ("inputs", "audioInputs", "inputList"),
+                ("outputs", "audioOutputs", "outputList"),
+            )
+            if normalized_inputs:
+                result["inputs"] = normalized_inputs
+            if normalized_outputs:
+                result["outputs"] = normalized_outputs
 
         if isinstance(detail_data, dict):
             result["input_id"] = self._coerce_audio_id(
@@ -595,23 +628,16 @@ class NovastarClient:
             elif isinstance(muted, (int, float)):
                 result["muted"] = bool(int(muted))
 
-            if not result["inputs"]:
-                raw_inputs = detail_data.get("inputs")
-                if isinstance(raw_inputs, list):
-                    result["inputs"] = self._normalize_audio_options(
-                        raw_inputs,
-                        ("audioInputId", "inputId", "id"),
-                        "Audio Input",
-                    )
-
-            if not result["outputs"]:
-                raw_outputs = detail_data.get("outputs")
-                if isinstance(raw_outputs, list):
-                    result["outputs"] = self._normalize_audio_options(
-                        raw_outputs,
-                        ("audioOutputId", "outputId", "id"),
-                        "Audio Output",
-                    )
+            if not result["inputs"] or not result["outputs"]:
+                normalized_inputs, normalized_outputs = self._extract_audio_options_from_container(
+                    detail_data,
+                    ("inputs", "audioInputs", "inputList"),
+                    ("outputs", "audioOutputs", "outputList"),
+                )
+                if normalized_inputs and not result["inputs"]:
+                    result["inputs"] = normalized_inputs
+                if normalized_outputs and not result["outputs"]:
+                    result["outputs"] = normalized_outputs
 
         if isinstance(screen_detail_data, dict):
             audio_data = screen_detail_data.get("audio")
@@ -638,28 +664,15 @@ class NovastarClient:
                 elif isinstance(audio_muted, (int, float)):
                     result["muted"] = bool(int(audio_muted))
 
-                if not result["inputs"]:
-                    audio_inputs = audio_data.get("inputs")
-                    if isinstance(audio_inputs, list):
-                        result["inputs"] = self._normalize_audio_options(
-                            audio_inputs,
-                            ("audioInputId", "inputId", "inputChannelMode", "id"),
-                            "Audio Input",
-                        )
-
-                if not result["outputs"]:
-                    audio_outputs = audio_data.get("outputs")
-                    if isinstance(audio_outputs, list):
-                        result["outputs"] = self._normalize_audio_options(
-                            audio_outputs,
-                            (
-                                "audioOutputId",
-                                "outputId",
-                                "outputChannelMode",
-                                "id",
-                            ),
-                            "Audio Output",
-                        )
+                normalized_inputs, normalized_outputs = self._extract_audio_options_from_container(
+                    audio_data,
+                    ("inputs", "audioInputs", "inputList"),
+                    ("outputs", "audioOutputs", "outputList"),
+                )
+                if normalized_inputs:
+                    result["inputs"] = normalized_inputs
+                if normalized_outputs:
+                    result["outputs"] = normalized_outputs
 
         return result
 
@@ -674,7 +687,24 @@ class NovastarClient:
             "screenId": int(screen_id),
             "deviceId": int(device_id),
         }
+        screen_detail_data = await self._async_request("screen/readDetail", payload_base)
+        merged_audio_payload: dict[str, Any] | None = None
+        if isinstance(screen_detail_data, dict):
+            audio_data = screen_detail_data.get("audio")
+            if isinstance(audio_data, dict):
+                merged_audio_payload = dict(audio_data)
+                merged_audio_payload["inputChannelMode"] = int(input_id)
+
         candidates = [
+            (
+                "screen/writeDetail",
+                {
+                    **payload_base,
+                    "audio": merged_audio_payload,
+                },
+            )
+            if merged_audio_payload is not None
+            else None,
             ("audio/writeInput", {**payload_base, "audioInputId": int(input_id)}),
             ("audio/writeInput", {**payload_base, "inputId": int(input_id)}),
             (
@@ -697,7 +727,8 @@ class NovastarClient:
             ),
             ("audio/write", {**payload_base, "audioInputId": int(input_id)}),
         ]
-        result = await self._async_request_first_success(candidates)
+        valid_candidates = [c for c in candidates if c is not None]
+        result = await self._async_request_first_success(valid_candidates)
         return result is not None
 
     async def async_set_audio_output(
@@ -711,7 +742,24 @@ class NovastarClient:
             "screenId": int(screen_id),
             "deviceId": int(device_id),
         }
+        screen_detail_data = await self._async_request("screen/readDetail", payload_base)
+        merged_audio_payload: dict[str, Any] | None = None
+        if isinstance(screen_detail_data, dict):
+            audio_data = screen_detail_data.get("audio")
+            if isinstance(audio_data, dict):
+                merged_audio_payload = dict(audio_data)
+                merged_audio_payload["outputChannelMode"] = int(output_id)
+
         candidates = [
+            (
+                "screen/writeDetail",
+                {
+                    **payload_base,
+                    "audio": merged_audio_payload,
+                },
+            )
+            if merged_audio_payload is not None
+            else None,
             ("audio/writeOutput", {**payload_base, "audioOutputId": int(output_id)}),
             ("audio/writeOutput", {**payload_base, "outputId": int(output_id)}),
             (
@@ -734,7 +782,8 @@ class NovastarClient:
             ),
             ("audio/write", {**payload_base, "audioOutputId": int(output_id)}),
         ]
-        result = await self._async_request_first_success(candidates)
+        valid_candidates = [c for c in candidates if c is not None]
+        result = await self._async_request_first_success(valid_candidates)
         return result is not None
 
     async def async_set_audio_volume(
@@ -749,7 +798,25 @@ class NovastarClient:
             "screenId": int(screen_id),
             "deviceId": int(device_id),
         }
+        screen_detail_data = await self._async_request("screen/readDetail", payload_base)
+        merged_audio_payload: dict[str, Any] | None = None
+        if isinstance(screen_detail_data, dict):
+            audio_data = screen_detail_data.get("audio")
+            if isinstance(audio_data, dict):
+                merged_audio_payload = dict(audio_data)
+                merged_audio_payload["volume"] = clamped_volume
+                merged_audio_payload["outputVolume"] = clamped_volume
+
         candidates = [
+            (
+                "screen/writeDetail",
+                {
+                    **payload_base,
+                    "audio": merged_audio_payload,
+                },
+            )
+            if merged_audio_payload is not None
+            else None,
             ("audio/writeVolume", {**payload_base, "volume": clamped_volume}),
             ("screen/writeVolume", {**payload_base, "volume": clamped_volume}),
             (
@@ -758,12 +825,14 @@ class NovastarClient:
                     **payload_base,
                     "audio": {
                         "volume": clamped_volume,
+                        "outputVolume": clamped_volume,
                     },
                 },
             ),
             ("audio/write", {**payload_base, "volume": clamped_volume}),
         ]
-        result = await self._async_request_first_success(candidates)
+        valid_candidates = [c for c in candidates if c is not None]
+        result = await self._async_request_first_success(valid_candidates)
         return result is not None
 
     async def async_get_background_list(

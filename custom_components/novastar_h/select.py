@@ -484,7 +484,11 @@ class NovastarAudioInputSelect(_NovastarBaseAudioSelect):
             input_id = _coerce_int(input_data.get("id"))
             if input_id is None:
                 continue
-            mapped[_input_label(input_data)] = input_id
+            base_label = _input_label(input_data)
+            label = base_label
+            if label in mapped and mapped[label] != input_id:
+                label = f"{base_label} ({input_id})"
+            mapped[label] = input_id
         return dict(sorted(mapped.items(), key=lambda item: item[0]))
 
     @property
@@ -553,7 +557,11 @@ class NovastarAudioOutputSelect(_NovastarBaseAudioSelect):
                 continue
             label = output_data.get("name") or f"Audio Output {output_id}"
             if isinstance(label, str):
-                mapped[label.strip() or f"Audio Output {output_id}"] = output_id
+                base_label = label.strip() or f"Audio Output {output_id}"
+                unique_label = base_label
+                if unique_label in mapped and mapped[unique_label] != output_id:
+                    unique_label = f"{base_label} ({output_id})"
+                mapped[unique_label] = output_id
         return dict(sorted(mapped.items(), key=lambda item: item[0]))
 
     @property
