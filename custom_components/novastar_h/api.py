@@ -595,19 +595,17 @@ class NovastarClient:
             if is_available != 1:
                 continue
 
-            general = layer.get("general")
-            layer_name: str | None = None
-            if isinstance(general, dict):
-                name = general.get("name")
-                if isinstance(name, str) and name.strip():
-                    layer_name = name.strip()
+            source = layer.get("source")
+            input_name: str | None = None
+            if isinstance(source, dict):
+                source_name = source.get("name")
+                if isinstance(source_name, str) and source_name.strip():
+                    input_name = source_name.strip()
 
-            if not layer_name:
-                name = layer.get("name")
-                if isinstance(name, str) and name.strip():
-                    layer_name = name.strip()
+            if not input_name:
+                input_name = "Input"
 
-            mapped[layer_id] = layer_name or f"Layer {layer_id}"
+            mapped[layer_id] = f"{input_name} (Layer {layer_id})"
 
         return [{"id": layer_id, "name": mapped[layer_id]} for layer_id in sorted(mapped)]
 
@@ -955,29 +953,78 @@ class NovastarClient:
         if any_layer_updated:
             self._force_refresh_layer_details = True
 
-        # Verify that the selected layer is actually open after write attempts.
-        self._force_refresh_layer_details = True
-        refreshed_layers = await self.async_get_layers_with_details(
-            device_id=int(device_id),
-            screen_id=int(screen_id),
-        )
-        selected_after_write = self._selected_audio_input_from_layers(refreshed_layers)
-        is_selected_applied = selected_after_write == selected_layer_id
-
-        if not is_selected_applied:
-            currently_open = [
+        async def _verify_selected_open() -> tuple[bool, int | None, list[int | None]]:
+            self._force_refresh_layer_details = True
+            refreshed_layers = await self.async_get_layers_with_details(
+                device_id=int(device_id),
+                screen_id=int(screen_id),
+            )
+            selected_after = self._selected_audio_input_from_layers(refreshed_layers)
+            open_layers = [
                 self._coerce_audio_id(layer.get("layerId"))
                 for layer in refreshed_layers
                 if isinstance(layer, dict)
                 and isinstance(layer.get("audioStatus"), dict)
                 and self._coerce_audio_id(layer["audioStatus"].get("isOpen")) == 1
             ]
+            return selected_after == selected_layer_id, selected_after, open_layers
+
+        is_selected_applied, selected_after_write, currently_open = await _verify_selected_open()
+
+        if not is_selected_applied:
             self._debug_log(
-                "Audio input verification failed selected_layer_id=%s selected_after_write=%s open_layers=%s",
+                "Audio input verification failed after close-then-open selected_layer_id=%s selected_after_write=%s open_layers=%s",
                 selected_layer_id,
                 selected_after_write,
                 currently_open,
             )
+
+            # Fallback order for firmware variants: open selected first, then close others.
+            self._debug_log(
+                "Audio input fallback attempt: open selected first then close others selected_layer_id=%s",
+                selected_layer_id,
+            )
+
+            self._force_refresh_layer_details = True
+            retry_layers = await self.async_get_layers_with_details(
+                device_id=int(device_id),
+                screen_id=int(screen_id),
+            )
+
+            retry_selected_layer: dict[str, Any] | None = None
+            retry_close_layers: list[dict[str, Any]] = []
+            for layer in retry_layers:
+                if not isinstance(layer, dict):
+                    continue
+                layer_id = self._coerce_audio_id(layer.get("layerId"))
+                audio_status = layer.get("audioStatus")
+                if layer_id is None or not isinstance(audio_status, dict):
+                    continue
+                if self._coerce_audio_id(audio_status.get("isAvailable")) != 1:
+                    continue
+                is_open = self._coerce_audio_id(audio_status.get("isOpen")) == 1
+                if layer_id == selected_layer_id:
+                    retry_selected_layer = layer
+                elif is_open:
+                    retry_close_layers.append(layer)
+
+            if retry_selected_layer is not None:
+                if await _write_layer_open_state(retry_selected_layer, 1):
+                    any_layer_updated = True
+                    selected_layer_updated = True
+
+            for layer in retry_close_layers:
+                if await _write_layer_open_state(layer, 0):
+                    any_layer_updated = True
+
+            is_selected_applied, selected_after_write, currently_open = await _verify_selected_open()
+            if not is_selected_applied:
+                self._debug_log(
+                    "Audio input verification failed after fallback selected_layer_id=%s selected_after_write=%s open_layers=%s",
+                    selected_layer_id,
+                    selected_after_write,
+                    currently_open,
+                )
 
         self._debug_log(
             "Audio input write complete selected_layer_id=%s any_layer_updated=%s selected_layer_updated=%s selected_after_write=%s",
