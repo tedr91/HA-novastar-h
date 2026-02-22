@@ -129,6 +129,8 @@ class NovastarClient:
         """Emit debug log only when debug logging option is enabled."""
         if self._enable_debug_logging:
             _LOGGER.debug(message, *args)
+            if not _LOGGER.isEnabledFor(logging.DEBUG):
+                _LOGGER.warning("[novastar_h debug] " + message, *args)
 
     @property
     def host(self) -> str:
