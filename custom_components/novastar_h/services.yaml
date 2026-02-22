@@ -23,3 +23,60 @@ send_raw_command:
       example: '{"deviceId": 0}'
       selector:
         object:
+
+set_layer_source:
+  name: Set Layer Source
+  description: Set or clear the source routed to a specific layer.
+  fields:
+    host:
+      name: Host
+      description: The IP address of the Novastar processor.
+      required: true
+      example: "192.168.1.100"
+      selector:
+        text:
+    layer_id:
+      name: Layer ID
+      description: Target layer ID.
+      required: true
+      example: 2
+      selector:
+        number:
+          min: 0
+          mode: box
+    input_id:
+      name: Input ID
+      description: Input source ID to route. Omit to clear source.
+      required: false
+      example: 1
+      selector:
+        number:
+          min: 0
+          mode: box
+    interface_type:
+      name: Interface Type
+      description: Input interface type. Defaults to 0.
+      required: false
+      example: 5
+      selector:
+        number:
+          min: 0
+          mode: box
+    slot_id:
+      name: Slot ID
+      description: Input slot/interface ID. Defaults to 0.
+      required: false
+      example: 1
+      selector:
+        number:
+          min: 0
+          mode: box
+    crop_id:
+      name: Crop ID
+      description: Crop ID. Use 255 for original source.
+      required: false
+      example: 255
+      selector:
+        number:
+          min: 0
+          mode: box

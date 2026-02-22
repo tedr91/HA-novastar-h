@@ -90,6 +90,28 @@ class NovastarCoordinator(DataUpdateCoordinator[NovastarState]):
             self.async_set_updated_data(self.data)
         return result
 
+    async def async_set_layer_source(
+        self,
+        layer_id: int,
+        input_id: int | None,
+        interface_type: int = 0,
+        slot_id: int = 0,
+        crop_id: int = 255,
+    ) -> bool:
+        """Set source for a layer and refresh state."""
+        result = await self._client.async_set_layer_source(
+            layer_id=layer_id,
+            input_id=input_id,
+            interface_type=interface_type,
+            slot_id=slot_id,
+            crop_id=crop_id,
+            screen_id=self._screen_id,
+            device_id=self._device_id,
+        )
+        if result:
+            await self.async_request_refresh()
+        return result
+
     async def _async_update_data(self) -> NovastarState:
         """Fetch data from the device."""
         state = await self._client.async_get_state(self._screen_id, self._device_id)

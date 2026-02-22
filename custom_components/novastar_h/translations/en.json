@@ -110,6 +110,9 @@
     "select": {
       "preset": {
         "name": "Preset"
+      },
+      "layer_source": {
+        "name": "Layer Source"
       }
     },
     "number": {
@@ -157,6 +160,36 @@
         "body": {
           "name": "Body",
           "description": "The JSON body to send with the request."
+        }
+      }
+    },
+    "set_layer_source": {
+      "name": "Set Layer Source",
+      "description": "Set or clear the source routed to a specific layer.",
+      "fields": {
+        "host": {
+          "name": "Host",
+          "description": "The IP address of the Novastar processor."
+        },
+        "layer_id": {
+          "name": "Layer ID",
+          "description": "Target layer ID."
+        },
+        "input_id": {
+          "name": "Input ID",
+          "description": "Input source ID to route. Omit to clear source."
+        },
+        "interface_type": {
+          "name": "Interface Type",
+          "description": "Input interface type. Defaults to 0."
+        },
+        "slot_id": {
+          "name": "Slot ID",
+          "description": "Input slot/interface ID. Defaults to 0."
+        },
+        "crop_id": {
+          "name": "Crop ID",
+          "description": "Crop ID. Use 255 for original source."
         }
       }
     }

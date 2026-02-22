@@ -665,3 +665,53 @@ class NovastarClient:
             Response body dict on success, None on failure
         """
         return await self._async_request(endpoint, body)
+
+    async def async_set_layer_source(
+        self,
+        layer_id: int,
+        input_id: int | None,
+        interface_type: int = 0,
+        slot_id: int = 0,
+        crop_id: int = 255,
+        screen_id: int = 0,
+        device_id: int = 0,
+    ) -> bool:
+        """Set source for a layer via layer/writeSource.
+
+        Args:
+            layer_id: Target layer ID
+            input_id: Input ID to route, or None to clear source
+            interface_type: Input interface type
+            slot_id: Input slot/interface ID
+            crop_id: Crop ID (255 uses original source)
+            screen_id: Screen ID
+            device_id: Device ID
+        """
+        if input_id is None:
+            source_type = 0
+            payload_input_id = 0
+            payload_interface_type = 0
+            payload_slot_id = 0
+        else:
+            source_type = 1
+            payload_input_id = max(0, int(input_id))
+            payload_interface_type = max(0, int(interface_type))
+            payload_slot_id = max(0, int(slot_id))
+
+        payload = {
+            "screenId": int(screen_id),
+            "deviceId": int(device_id),
+            "layerId": int(layer_id),
+            "sourceType": source_type,
+            "slotId": payload_slot_id,
+            "interfaceType": payload_interface_type,
+            "inputId": payload_input_id,
+            "cropId": int(crop_id),
+        }
+
+        data = await self._async_request("layer/writeSource", payload)
+        if data is not None:
+            self._force_refresh_layer_details = True
+            self._force_refresh_input_details = True
+            return True
+        return False

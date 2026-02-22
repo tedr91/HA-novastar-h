@@ -31,14 +31,31 @@ from .coordinator import NovastarCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 SERVICE_SEND_RAW_COMMAND = "send_raw_command"
+SERVICE_SET_LAYER_SOURCE = "set_layer_source"
 ATTR_ENDPOINT = "endpoint"
 ATTR_BODY = "body"
+ATTR_LAYER_ID = "layer_id"
+ATTR_INPUT_ID = "input_id"
+ATTR_INTERFACE_TYPE = "interface_type"
+ATTR_SLOT_ID = "slot_id"
+ATTR_CROP_ID = "crop_id"
 
 SERVICE_SEND_RAW_COMMAND_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): cv.string,
         vol.Required(ATTR_ENDPOINT): cv.string,
         vol.Required(ATTR_BODY): dict,
+    }
+)
+
+SERVICE_SET_LAYER_SOURCE_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_HOST): cv.string,
+        vol.Required(ATTR_LAYER_ID): vol.Coerce(int),
+        vol.Optional(ATTR_INPUT_ID): vol.Any(None, vol.Coerce(int)),
+        vol.Optional(ATTR_INTERFACE_TYPE, default=0): vol.Coerce(int),
+        vol.Optional(ATTR_SLOT_ID, default=0): vol.Coerce(int),
+        vol.Optional(ATTR_CROP_ID, default=255): vol.Coerce(int),
     }
 )
 
@@ -118,6 +135,46 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             schema=SERVICE_SEND_RAW_COMMAND_SCHEMA,
         )
 
+    if not hass.services.has_service(DOMAIN, SERVICE_SET_LAYER_SOURCE):
+        async def async_set_layer_source(call: ServiceCall) -> None:
+            """Handle set_layer_source service call."""
+            host = call.data[CONF_HOST]
+            layer_id = call.data[ATTR_LAYER_ID]
+            input_id = call.data.get(ATTR_INPUT_ID)
+            interface_type = call.data[ATTR_INTERFACE_TYPE]
+            slot_id = call.data[ATTR_SLOT_ID]
+            crop_id = call.data[ATTR_CROP_ID]
+
+            coordinator_found: NovastarCoordinator | None = None
+            for data in hass.data[DOMAIN].values():
+                if isinstance(data, dict) and "client" in data and "coordinator" in data:
+                    if data["client"].host == host:
+                        coordinator_found = data["coordinator"]
+                        break
+
+            if coordinator_found is None:
+                _LOGGER.error("No Novastar device found at %s", host)
+                return
+
+            result = await coordinator_found.async_set_layer_source(
+                layer_id=layer_id,
+                input_id=input_id,
+                interface_type=interface_type,
+                slot_id=slot_id,
+                crop_id=crop_id,
+            )
+            if not result:
+                _LOGGER.warning(
+                    "Failed to set layer source for host=%s layer_id=%s", host, layer_id
+                )
+
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_LAYER_SOURCE,
+            async_set_layer_source,
+            schema=SERVICE_SET_LAYER_SOURCE_SCHEMA,
+        )
+
     loaded_platforms: list[Any] = []
     for platform in PLATFORMS:
         try:
@@ -169,6 +226,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             and hass.services.has_service(DOMAIN, SERVICE_SEND_RAW_COMMAND)
         ):
             hass.services.async_remove(DOMAIN, SERVICE_SEND_RAW_COMMAND)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_SET_LAYER_SOURCE
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_SET_LAYER_SOURCE)
     return unloaded
 
 
