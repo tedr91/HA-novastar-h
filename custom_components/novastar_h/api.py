@@ -576,12 +576,7 @@ class NovastarClient:
         return None
 
     def _audio_inputs_from_layers(self, layers: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Build audio input options from layers where audioStatus.isAvailable == 1.
-
-        Prefer layer source.inputId as the option id when available. Some firmware
-        keeps audioStatus.isOpen anchored to one layer (commonly layer 0) while
-        switching source input within that layer.
-        """
+        """Build audio input options from layers where audioStatus.isAvailable == 1."""
         mapped: dict[int, str] = {}
 
         for layer in layers:
@@ -601,12 +596,8 @@ class NovastarClient:
                 continue
 
             source = layer.get("source")
-            option_id = layer_id
             input_name: str | None = None
             if isinstance(source, dict):
-                source_input_id = self._coerce_audio_id(source.get("inputId"))
-                if source_input_id is not None:
-                    option_id = source_input_id
                 source_name = source.get("name")
                 if isinstance(source_name, str) and source_name.strip():
                     input_name = source_name.strip()
@@ -614,15 +605,12 @@ class NovastarClient:
             if not input_name:
                 input_name = "Input"
 
-            mapped[option_id] = f"{input_name} (Layer {layer_id})"
+            mapped[layer_id] = f"{input_name} (Layer {layer_id})"
 
-        return [{"id": option_id, "name": mapped[option_id]} for option_id in sorted(mapped)]
+        return [{"id": layer_id, "name": mapped[layer_id]} for layer_id in sorted(mapped)]
 
     def _selected_audio_input_from_layers(self, layers: list[dict[str, Any]]) -> int | None:
-        """Get selected audio input id from layer audioStatus.isOpen flag.
-
-        Prefer open layer source.inputId, fallback to open layerId.
-        """
+        """Get selected audio input id from layer audioStatus.isOpen flag."""
         selected_ids: list[int] = []
 
         for layer in layers:
@@ -639,13 +627,7 @@ class NovastarClient:
 
             is_open = self._coerce_audio_id(audio_status.get("isOpen"))
             if is_open == 1:
-                selected_id = layer_id
-                source = layer.get("source")
-                if isinstance(source, dict):
-                    source_input_id = self._coerce_audio_id(source.get("inputId"))
-                    if source_input_id is not None:
-                        selected_id = source_input_id
-                selected_ids.append(selected_id)
+                selected_ids.append(layer_id)
 
         if not selected_ids:
             return None
@@ -768,166 +750,84 @@ class NovastarClient:
         screen_id: int = 0,
         device_id: int = 0,
     ) -> bool:
-        """Set active audio input.
+        """Set active audio input via layer/screenLayerLayout using layer detail list."""
+        selected_layer_id = int(input_id)
+        detail_payload = {
+            "deviceId": int(device_id),
+            "screenId": int(screen_id),
+        }
 
-        The provided input_id may represent either a layerId or a source inputId.
-        """
-        selected_option_id = int(input_id)
-        layer_items = await self.async_get_layers_with_details(
+        layout_data = await self._async_request("layer/detailList", detail_payload)
+        if not isinstance(layout_data, dict):
+            self._debug_log(
+                "Audio input set aborted: layer/detailList returned invalid data host=%s",
+                self._host,
+            )
+            return False
+
+        layers_key = "screenLayers" if isinstance(layout_data.get("screenLayers"), list) else "layers"
+        raw_layers = layout_data.get(layers_key)
+        if not isinstance(raw_layers, list):
+            self._debug_log(
+                "Audio input set aborted: no layers in detailList host=%s keys=%s",
+                self._host,
+                list(layout_data.keys()),
+            )
+            return False
+
+        updated_layers: list[dict[str, Any]] = []
+        selected_found = False
+        for layer in raw_layers:
+            if not isinstance(layer, dict):
+                continue
+            layer_copy = dict(layer)
+            layer_id = self._coerce_audio_id(layer_copy.get("layerId"))
+            audio_status = layer_copy.get("audioStatus")
+            if not isinstance(audio_status, dict):
+                audio_status = {}
+            updated_audio_status = dict(audio_status)
+            if layer_id == selected_layer_id:
+                updated_audio_status["isOpen"] = 1
+                selected_found = True
+            else:
+                updated_audio_status["isOpen"] = 0
+            layer_copy["audioStatus"] = updated_audio_status
+            updated_layers.append(layer_copy)
+
+        if not selected_found:
+            self._debug_log(
+                "Audio input set aborted: selected layer not found selected_layer_id=%s available=%s",
+                selected_layer_id,
+                [self._coerce_audio_id(layer.get("layerId")) for layer in updated_layers],
+            )
+            return False
+
+        write_payload = {
+            **detail_payload,
+            **{
+                key: value
+                for key, value in layout_data.items()
+                if key not in ("screenLayers", "layers")
+            },
+            layers_key: updated_layers,
+        }
+
+        write_result = await self._async_request("layer/screenLayerLayout", write_payload)
+        if write_result is None:
+            _LOGGER.warning(
+                "Audio input apply failed on host=%s selected_layer_id=%s endpoint=layer/screenLayerLayout",
+                self._host,
+                selected_layer_id,
+            )
+            return False
+
+        self._force_refresh_layer_details = True
+        refreshed_layers = await self.async_get_layers_with_details(
             device_id=int(device_id),
             screen_id=int(screen_id),
         )
-
-        audio_layers: list[dict[str, Any]] = []
-        for layer in layer_items:
-            if not isinstance(layer, dict):
-                continue
-            layer_id = self._coerce_audio_id(layer.get("layerId"))
-            if layer_id is None:
-                continue
-            audio_status = layer.get("audioStatus")
-            if not isinstance(audio_status, dict):
-                continue
-            if self._coerce_audio_id(audio_status.get("isAvailable")) != 1:
-                continue
-            audio_layers.append(layer)
-
-        self._debug_log(
-            "Audio input set request host=%s screen_id=%s device_id=%s selected_option_id=%s available_audio_layers=%s",
-            self._host,
-            int(screen_id),
-            int(device_id),
-            selected_option_id,
-            [self._coerce_audio_id(layer.get("layerId")) for layer in audio_layers],
-        )
-
-        if not audio_layers:
-            self._debug_log("Audio input set aborted: no layers with audioStatus.isAvailable == 1")
-            return False
-
-        def _layer_source_input_id(layer: dict[str, Any]) -> int | None:
-            source = layer.get("source")
-            if isinstance(source, dict):
-                return self._coerce_audio_id(source.get("inputId"))
-            return None
-
-        selected_layer: dict[str, Any] | None = None
-        for layer in audio_layers:
-            layer_id = self._coerce_audio_id(layer.get("layerId"))
-            source_input_id = _layer_source_input_id(layer)
-            if layer_id == selected_option_id or source_input_id == selected_option_id:
-                selected_layer = layer
-                break
-
-        if selected_layer is None:
-            self._debug_log(
-                "Audio input set aborted: selected_option_id=%s not matched to any available layer/source available=%s",
-                selected_option_id,
-                [
-                    {
-                        "layer_id": self._coerce_audio_id(layer.get("layerId")),
-                        "source_input_id": _layer_source_input_id(layer),
-                    }
-                    for layer in audio_layers
-                ],
-            )
-            return False
-
-        selected_layer_id = self._coerce_audio_id(selected_layer.get("layerId"))
-        if selected_layer_id is None:
-            self._debug_log(
-                "Audio input set aborted: matched layer has no valid layerId selected_option_id=%s",
-                selected_option_id,
-            )
-            return False
-
-        any_layer_updated = False
-        selected_layer_updated = False
-
-        async def _build_write_general_payload(
-            layer: dict[str, Any], should_open: int
-        ) -> dict[str, Any] | None:
-            """Build layer/writeGeneral payload for one layer audio open state."""
-            layer_id = self._coerce_audio_id(layer.get("layerId"))
-            current_audio_status = layer.get("audioStatus")
-            if layer_id is None or not isinstance(current_audio_status, dict):
-                return None
-
-            desired_audio_status = dict(current_audio_status)
-            desired_audio_status["isOpen"] = should_open
-
-            payload_base = {
-                "screenId": int(screen_id),
-                "deviceId": int(device_id),
-                "layerId": int(layer_id),
-            }
-
-            general_data: dict[str, Any] | None = None
-            layer_detail = await self.async_get_layer_detail(
-                layer_id=int(layer_id),
-                device_id=int(device_id),
-                screen_id=int(screen_id),
-            )
-            if isinstance(layer_detail, dict) and isinstance(layer_detail.get("general"), dict):
-                general_data = dict(layer_detail["general"])
-            elif isinstance(layer.get("general"), dict):
-                general_data = dict(layer["general"])
-
-            if general_data is None:
-                self._debug_log(
-                    "Audio input write skipped layer_id=%s: missing general data for layer/writeGeneral",
-                    layer_id,
-                )
-                return None
-
-            write_general_payload = {
-                **payload_base,
-                "name": general_data.get("name")
-                if isinstance(general_data.get("name"), str) and general_data.get("name").strip()
-                else f"Layer {layer_id}",
-                "sizeType": int(general_data.get("sizeType", 0)),
-                "type": int(general_data.get("type", 0)),
-                "zorder": int(general_data.get("zorder", 0)),
-                "isBackground": bool(general_data.get("isBackground", False)),
-                "isFreeze": bool(general_data.get("isFreeze", False)),
-                "flipType": int(general_data.get("flipType", 0)),
-                "audioStatus": desired_audio_status,
-            }
-
-            optional_lock = self._coerce_audio_id(general_data.get("lock"))
-            if optional_lock is not None:
-                write_general_payload["lock"] = optional_lock
-
-            reverse_control = layer_detail.get("reverseControl") if isinstance(layer_detail, dict) else None
-            if isinstance(reverse_control, dict):
-                write_general_payload["reverseControl"] = reverse_control
-            return write_general_payload
-
-        for layer in audio_layers:
-            layer_id = self._coerce_audio_id(layer.get("layerId"))
-            current_audio_status = layer.get("audioStatus")
-            if layer_id is None or not isinstance(current_audio_status, dict):
-                continue
-            should_open = 1 if layer is selected_layer else 0
-            payload = await _build_write_general_payload(layer, should_open)
-            if payload is None:
-                continue
-            attempt = await self._async_request("layer/writeGeneral", payload)
-            if attempt is not None:
-                any_layer_updated = True
-                if should_open == 1:
-                    selected_layer_updated = True
-
-        if any_layer_updated:
-            self._force_refresh_layer_details = True
-
-        async def _verify_selected_open() -> tuple[bool, int | None, list[int | None]]:
-            self._force_refresh_layer_details = True
-            refreshed_layers = await self.async_get_layers_with_details(
-                device_id=int(device_id),
-                screen_id=int(screen_id),
-            )
-            selected_after = self._selected_audio_input_from_layers(refreshed_layers)
+        selected_after = self._selected_audio_input_from_layers(refreshed_layers)
+        if selected_after != selected_layer_id:
             open_layers = [
                 self._coerce_audio_id(layer.get("layerId"))
                 for layer in refreshed_layers
@@ -935,30 +835,16 @@ class NovastarClient:
                 and isinstance(layer.get("audioStatus"), dict)
                 and self._coerce_audio_id(layer["audioStatus"].get("isOpen")) == 1
             ]
-            is_selected = selected_after in (selected_option_id, selected_layer_id)
-            return is_selected, selected_after, open_layers
-
-        is_selected_applied, selected_after_write, currently_open = await _verify_selected_open()
-
-        if not is_selected_applied:
             _LOGGER.warning(
-                "Audio input apply failed on host=%s selected_option_id=%s selected_layer_id=%s selected_after_write=%s open_layers=%s",
+                "Audio input apply failed on host=%s selected_layer_id=%s selected_after_write=%s open_layers=%s endpoint=layer/screenLayerLayout",
                 self._host,
-                selected_option_id,
                 selected_layer_id,
-                selected_after_write,
-                currently_open,
+                selected_after,
+                open_layers,
             )
+            return False
 
-        self._debug_log(
-            "Audio input write complete selected_layer_id=%s any_layer_updated=%s selected_layer_updated=%s selected_after_write=%s",
-            selected_layer_id,
-            any_layer_updated,
-            selected_layer_updated,
-            selected_after_write,
-        )
-
-        return any_layer_updated and selected_layer_updated and is_selected_applied
+        return True
 
     async def async_set_audio_output(
         self,
