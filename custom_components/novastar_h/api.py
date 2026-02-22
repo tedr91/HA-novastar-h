@@ -799,47 +799,30 @@ class NovastarClient:
                 "layerId": int(layer_id),
             }
 
-            layer_detail = await self.async_get_layer_detail(
-                layer_id=layer_id,
-                device_id=int(device_id),
-                screen_id=int(screen_id),
-            )
-            merged_detail_payload: dict[str, Any] | None = None
-            if isinstance(layer_detail, dict):
-                merged_detail_payload = dict(layer_detail)
-                merged_detail_payload["audioStatus"] = desired_audio_status
-                merged_detail_payload.update(payload_base)
-
             candidates = [
-                ("layer/writeDetail", merged_detail_payload)
-                if merged_detail_payload is not None
-                else None,
                 (
-                    "layer/writeDetail",
+                    "layer/writeGeneral",
+                    {
+                        **payload_base,
+                        "general": {
+                            "audioStatus": desired_audio_status,
+                        },
+                    },
+                ),
+                (
+                    "layer/writeGeneral",
+                    {
+                        **payload_base,
+                        "general": {
+                            "isOpen": should_open,
+                        },
+                    },
+                ),
+                (
+                    "layer/writeGeneral",
                     {
                         **payload_base,
                         "audioStatus": desired_audio_status,
-                    },
-                ),
-                (
-                    "layer/writeAudioStatus",
-                    {
-                        **payload_base,
-                        "audioStatus": desired_audio_status,
-                    },
-                ),
-                (
-                    "layer/writeAudioStatus",
-                    {
-                        **payload_base,
-                        "isOpen": should_open,
-                    },
-                ),
-                (
-                    "layer/writeAudio",
-                    {
-                        **payload_base,
-                        "isOpen": should_open,
                     },
                 ),
             ]
