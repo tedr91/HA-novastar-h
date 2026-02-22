@@ -27,6 +27,7 @@ from .const import (
 from .discovery import DiscoveredDevice, scan_network
 
 _LOGGER = logging.getLogger(__name__)
+_OPT_LAYER_COUNT_UI = "layer_count"
 
 
 class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -330,7 +331,12 @@ class NovastarOptionsFlowHandler(OptionsFlow):
     ) -> FlowResult:
         """Manage the options."""
         if user_input is not None:
-            return self.async_create_entry(title="", data=user_input)
+            options = dict(user_input)
+            if _OPT_LAYER_COUNT_UI in options:
+                options[CONF_LAYER_SELECT_PREPOPULATE_COUNT] = options.pop(
+                    _OPT_LAYER_COUNT_UI
+                )
+            return self.async_create_entry(title="", data=options)
 
         # Get current value from options, falling back to data
         current_allow_raw = self.config_entry.options.get(
@@ -353,7 +359,7 @@ class NovastarOptionsFlowHandler(OptionsFlow):
                         CONF_ALLOW_RAW_COMMANDS, default=current_allow_raw
                     ): bool,
                     vol.Optional(
-                        CONF_LAYER_SELECT_PREPOPULATE_COUNT,
+                        _OPT_LAYER_COUNT_UI,
                         default=current_layer_count,
                     ): vol.All(vol.Coerce(int), vol.Range(min=1, max=16)),
                 }
