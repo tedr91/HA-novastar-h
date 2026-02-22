@@ -820,6 +820,8 @@ class NovastarClient:
 
             desired_audio_status = dict(current_audio_status)
             desired_audio_status["isOpen"] = should_open
+            desired_audio_status_bool = dict(current_audio_status)
+            desired_audio_status_bool["isOpen"] = should_open == 1
 
             payload_base = {
                 "screenId": int(screen_id),
@@ -859,6 +861,21 @@ class NovastarClient:
                 "audioStatus": desired_audio_status,
             }
 
+            write_general_payload_nested_audio = {
+                **payload_base,
+                "general": {
+                    **general_data,
+                    "audioStatus": desired_audio_status,
+                },
+            }
+            write_general_payload_nested_audio_bool = {
+                **payload_base,
+                "general": {
+                    **general_data,
+                    "audioStatus": desired_audio_status_bool,
+                },
+            }
+
             optional_lock = self._coerce_audio_id(general_data.get("lock"))
             if optional_lock is not None:
                 write_general_payload["lock"] = optional_lock
@@ -872,23 +889,43 @@ class NovastarClient:
                 "general": dict(general_data),
                 "audioStatus": desired_audio_status,
             }
+            write_detail_payload_general_audio = {
+                **payload_base,
+                "general": {
+                    **general_data,
+                    "audioStatus": desired_audio_status,
+                },
+            }
+            write_audio_status_payload = {
+                **payload_base,
+                "audioStatus": desired_audio_status,
+            }
+            write_audio_status_payload_bool = {
+                **payload_base,
+                "audioStatus": desired_audio_status_bool,
+            }
             if isinstance(layer_detail, dict):
                 detail_window = layer_detail.get("window")
                 detail_source = layer_detail.get("source")
                 if isinstance(detail_window, dict):
                     write_detail_payload["window"] = detail_window
+                    write_detail_payload_general_audio["window"] = detail_window
                 if isinstance(detail_source, dict):
                     write_detail_payload["source"] = detail_source
+                    write_detail_payload_general_audio["source"] = detail_source
                 detail_reverse = layer_detail.get("reverseControl")
                 if isinstance(detail_reverse, dict):
                     write_detail_payload["reverseControl"] = detail_reverse
+                    write_detail_payload_general_audio["reverseControl"] = detail_reverse
             elif isinstance(layer.get("window"), dict) or isinstance(layer.get("source"), dict):
                 layer_window = layer.get("window")
                 layer_source = layer.get("source")
                 if isinstance(layer_window, dict):
                     write_detail_payload["window"] = layer_window
+                    write_detail_payload_general_audio["window"] = layer_window
                 if isinstance(layer_source, dict):
                     write_detail_payload["source"] = layer_source
+                    write_detail_payload_general_audio["source"] = layer_source
 
             candidates = [
                 (
@@ -906,10 +943,16 @@ class NovastarClient:
                     "layer/writeGeneral",
                     {
                         **write_general_payload,
-                        "general": {
-                            "isOpen": should_open,
-                        },
+                        "audioStatus": desired_audio_status_bool,
                     },
+                ),
+                (
+                    "layer/writeGeneral",
+                    write_general_payload_nested_audio,
+                ),
+                (
+                    "layer/writeGeneral",
+                    write_general_payload_nested_audio_bool,
                 ),
                 (
                     "layer/writeDetail",
@@ -917,9 +960,13 @@ class NovastarClient:
                 ),
                 (
                     "layer/writeDetail",
+                    write_detail_payload_general_audio,
+                ),
+                (
+                    "layer/writeDetail",
                     {
                         **write_detail_payload,
-                        "isOpen": should_open,
+                        "audioStatus": desired_audio_status_bool,
                     },
                 ),
                 (
@@ -929,6 +976,21 @@ class NovastarClient:
                         "audio": {
                             "isOpen": should_open,
                         },
+                    },
+                ),
+                (
+                    "layer/writeAudioStatus",
+                    write_audio_status_payload,
+                ),
+                (
+                    "layer/writeAudioStatus",
+                    write_audio_status_payload_bool,
+                ),
+                (
+                    "layer/writeAudioStatus",
+                    {
+                        **payload_base,
+                        "isOpen": should_open,
                     },
                 ),
             ]
