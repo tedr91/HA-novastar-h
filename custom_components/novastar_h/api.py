@@ -61,10 +61,13 @@ class NovastarState:
     ftb_active: bool = False  # Fade to black (blackout) active
     freeze_active: bool = False  # Screen freeze active
     current_preset_id: int = -1  # -1 means no preset active
+    background_enabled: bool = False
+    background_id: int = 0
     screens: list[NovastarScreen] = field(default_factory=list)
     presets: list[NovastarPreset] = field(default_factory=list)
     inputs: list[dict[str, Any]] = field(default_factory=list)
     layers: list[dict[str, Any]] = field(default_factory=list)
+    backgrounds: list[dict[str, Any]] = field(default_factory=list)
 
 
 class NovastarClient:
@@ -109,6 +112,9 @@ class NovastarClient:
         self._last_preset_id: int | None = None
         self._force_refresh_input_details = False
         self._force_refresh_layer_details = False
+        self._background_list_cache: list[dict[str, Any]] = []
+        self._background_refresh_counter = 0
+        self._force_refresh_backgrounds = False
 
     @property
     def host(self) -> str:
@@ -196,7 +202,7 @@ class NovastarClient:
 
     async def _async_request(
         self, endpoint: str, body: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    ) -> Any | None:
         """Send POST request to Novastar API.
 
         Args:
@@ -235,7 +241,9 @@ class NovastarClient:
                     body_data = data.get("body") or data.get("data") or {}
                     if self._encryption and isinstance(body_data, str):
                         return self._decrypt_body(body_data)
-                    return body_data if isinstance(body_data, dict) else {}
+                    if isinstance(body_data, (dict, list)):
+                        return body_data
+                    return {}
 
         except aiohttp.ClientError as ex:
             _LOGGER.debug("Connection error to %s: %s", url, ex)
@@ -431,8 +439,43 @@ class NovastarClient:
         state.signal_status = temp_data.get("signal_status")
         state.inputs = await self.async_get_inputs_with_details(device_id)
         state.layers = await self.async_get_layers_with_details(device_id, screen_id)
+        state.backgrounds = await self.async_get_background_list(device_id)
 
         return state
+
+    async def async_get_background_list(
+        self, device_id: int = 0
+    ) -> list[dict[str, Any]]:
+        """Get available backgrounds from bkg/readAllList with lightweight caching."""
+        self._background_refresh_counter += 1
+        periodic_refresh = self._background_refresh_counter % 12 == 0
+        should_refresh = periodic_refresh or self._force_refresh_backgrounds
+
+        if not self._background_list_cache or should_refresh:
+            self._force_refresh_backgrounds = False
+            data = await self._async_request("bkg/readAllList", {"deviceId": device_id})
+            if isinstance(data, list):
+                parsed: list[dict[str, Any]] = []
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    bkg_id = item.get("bkgId")
+                    if not isinstance(bkg_id, int):
+                        continue
+                    general = item.get("general")
+                    name = item.get("name")
+                    if isinstance(general, dict) and isinstance(general.get("name"), str):
+                        name = general.get("name")
+                    parsed.append(
+                        {
+                            "bkgId": bkg_id,
+                            "name": name if isinstance(name, str) else f"BKG {bkg_id}",
+                        }
+                    )
+                parsed.sort(key=lambda item: item.get("bkgId", 0))
+                self._background_list_cache = parsed
+
+        return list(self._background_list_cache)
 
     async def async_get_input_list(self, device_id: int = 0) -> list[dict[str, Any]]:
         """Read all available inputs from input/readList."""
@@ -654,7 +697,7 @@ class NovastarClient:
 
     async def async_send_raw_command(
         self, endpoint: str, body: dict[str, Any]
-    ) -> dict[str, Any] | None:
+    ) -> Any | None:
         """Send a raw API command.
 
         Args:
@@ -665,6 +708,26 @@ class NovastarClient:
             Response body dict on success, None on failure
         """
         return await self._async_request(endpoint, body)
+
+    async def async_set_background(
+        self,
+        background_id: int,
+        enabled: bool,
+        screen_id: int = 0,
+        device_id: int = 0,
+    ) -> bool:
+        """Set screen background using screen/writeBKG."""
+        payload = {
+            "screenId": int(screen_id),
+            "deviceId": int(device_id),
+            "enable": 0 if enabled else 1,
+            "bkgId": max(0, int(background_id)),
+        }
+        data = await self._async_request("screen/writeBKG", payload)
+        if data is not None:
+            self._force_refresh_backgrounds = True
+            return True
+        return False
 
     async def async_set_layer_source(
         self,

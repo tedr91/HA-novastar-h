@@ -26,6 +26,7 @@ async def async_setup_entry(
     entities = [
         NovastarFTBSwitch(entry, coordinator, device_info),
         NovastarFreezeSwitch(entry, coordinator, device_info),
+        NovastarBackgroundSwitch(entry, coordinator, device_info),
     ]
     async_add_entities(entities)
 
@@ -138,3 +139,35 @@ class NovastarFreezeSwitch(NovastarSwitchBase):
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Unfreeze screen."""
         await self.coordinator.async_set_freeze(freeze=False)
+
+
+class NovastarBackgroundSwitch(NovastarSwitchBase):
+    """Switch for background display control."""
+
+    _attr_name = "Background"
+    _attr_translation_key = "background"
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: NovastarCoordinator,
+        device_info: NovastarDeviceInfo,
+    ) -> None:
+        """Initialize background switch."""
+        super().__init__(entry, coordinator, device_info)
+        self._attr_unique_id = f"{entry.entry_id}_background"
+
+    @property
+    def is_on(self) -> bool:
+        """Return True if background is enabled."""
+        if self.coordinator.data:
+            return self.coordinator.data.background_enabled
+        return False
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable background."""
+        await self.coordinator.async_set_background_enabled(enabled=True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable background."""
+        await self.coordinator.async_set_background_enabled(enabled=False)

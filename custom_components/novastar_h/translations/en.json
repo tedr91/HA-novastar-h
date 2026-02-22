@@ -107,11 +107,17 @@
       },
       "freeze": {
         "name": "Freeze Screen"
+      },
+      "background": {
+        "name": "Background"
       }
     },
     "select": {
       "preset": {
         "name": "Preset"
+      },
+      "background": {
+        "name": "Background"
       },
       "layer_source": {
         "name": "Layer Source"

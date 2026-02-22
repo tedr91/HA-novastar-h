@@ -63,6 +63,22 @@ def _layer_input_id(layer: dict[str, Any]) -> int | None:
     return _coerce_int(input_id)
 
 
+def _background_label(background: dict[str, Any]) -> str:
+    """Build stable display label for one background item."""
+    bkg_id = _coerce_int(background.get("bkgId"))
+    name = background.get("name")
+    if isinstance(name, str) and name.strip():
+        clean_name = name.strip()
+    elif bkg_id is not None:
+        clean_name = f"BKG {bkg_id}"
+    else:
+        clean_name = "Background"
+
+    if bkg_id is not None:
+        return f"{clean_name} ({bkg_id})"
+    return clean_name
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -81,6 +97,7 @@ async def async_setup_entry(
     layer_count = _coerce_int(layer_count) or DEFAULT_LAYER_SELECT_PREPOPULATE_COUNT
 
     entities: list[SelectEntity] = [NovastarPresetSelect(entry, coordinator, device_info)]
+    entities.append(NovastarBackgroundSelect(entry, coordinator, device_info))
     entities.extend(
         [
             NovastarLayerSourceSelect(entry, coordinator, device_info, layer_id)
@@ -317,3 +334,101 @@ class NovastarLayerSourceSelect(CoordinatorEntity[NovastarCoordinator], SelectEn
             slot_id=slot_id or 0,
             crop_id=255,
         )
+
+
+class NovastarBackgroundSelect(CoordinatorEntity[NovastarCoordinator], SelectEntity):
+    """Select entity for active background."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Background"
+    _attr_translation_key = "background"
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: NovastarCoordinator,
+        device_info: NovastarDeviceInfo,
+    ) -> None:
+        """Initialize background select."""
+        super().__init__(coordinator)
+        self._entry = entry
+        self._device_info = device_info
+        self._attr_unique_id = f"{entry.entry_id}_background"
+
+    @property
+    def device_info(self):
+        """Return device info."""
+        model = "H Series"
+        if self._device_info.model_id:
+            model = f"H Series (Model {self._device_info.model_id})"
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "manufacturer": "Novastar",
+            "model": model,
+            "name": self._entry.data.get(CONF_NAME, DEFAULT_NAME),
+            "sw_version": self._device_info.firmware,
+            "serial_number": self._device_info.serial,
+        }
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.last_update_success
+
+    def _background_map(self) -> dict[str, int]:
+        """Return label->background_id map."""
+        if not self.coordinator.data:
+            return {}
+
+        mapped: dict[str, int] = {}
+        for background in self.coordinator.data.backgrounds:
+            bkg_id = _coerce_int(background.get("bkgId"))
+            if bkg_id is None:
+                continue
+            mapped[_background_label(background)] = bkg_id
+        return dict(sorted(mapped.items(), key=lambda item: item[0]))
+
+    @property
+    def options(self) -> list[str]:
+        """Return available background options."""
+        options = list(self._background_map().keys())
+        current = self.current_option
+        if current and current not in options:
+            options.append(current)
+        if not options:
+            options.append("Background 0")
+        return options
+
+    @property
+    def current_option(self) -> str | None:
+        """Return currently selected background option."""
+        if not self.coordinator.data:
+            return None
+
+        current_id = _coerce_int(self.coordinator.data.background_id)
+        if current_id is None:
+            return None
+
+        for label, bkg_id in self._background_map().items():
+            if bkg_id == current_id:
+                return label
+
+        return f"Background {current_id}"
+
+    async def async_select_option(self, option: str) -> None:
+        """Set active background and enable it."""
+        bkg_id = self._background_map().get(option)
+        if bkg_id is None:
+            text = option.strip()
+            try:
+                if text.startswith("Background "):
+                    bkg_id = int(text.replace("Background ", "").strip())
+                elif text.startswith("BKG "):
+                    bkg_id = int(text.replace("BKG ", "").strip())
+            except ValueError:
+                return
+
+        if bkg_id is None:
+            return
+
+        await self.coordinator.async_set_background(background_id=bkg_id, enabled=True)

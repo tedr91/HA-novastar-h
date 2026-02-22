@@ -30,6 +30,8 @@ class NovastarCoordinator(DataUpdateCoordinator[NovastarState]):
         self._screen_id = screen_id
         self._ftb_active = False  # Track FTB state locally (API doesn't expose read)
         self._freeze_active = False  # Track freeze state locally
+        self._background_enabled = False
+        self._background_id = 0
         super().__init__(
             hass,
             _LOGGER,
@@ -112,10 +114,47 @@ class NovastarCoordinator(DataUpdateCoordinator[NovastarState]):
             await self.async_request_refresh()
         return result
 
+    async def async_set_background_enabled(self, enabled: bool) -> bool:
+        """Enable or disable current selected background."""
+        result = await self._client.async_set_background(
+            background_id=self._background_id,
+            enabled=enabled,
+            screen_id=self._screen_id,
+            device_id=self._device_id,
+        )
+        if result:
+            self._background_enabled = enabled
+            if self.data:
+                self.data.background_enabled = enabled
+                self.data.background_id = self._background_id
+                self.async_set_updated_data(self.data)
+            await self.async_request_refresh()
+        return result
+
+    async def async_set_background(self, background_id: int, enabled: bool = True) -> bool:
+        """Set active background id and optional enabled state."""
+        result = await self._client.async_set_background(
+            background_id=background_id,
+            enabled=enabled,
+            screen_id=self._screen_id,
+            device_id=self._device_id,
+        )
+        if result:
+            self._background_id = max(0, int(background_id))
+            self._background_enabled = enabled
+            if self.data:
+                self.data.background_id = self._background_id
+                self.data.background_enabled = self._background_enabled
+                self.async_set_updated_data(self.data)
+            await self.async_request_refresh()
+        return result
+
     async def _async_update_data(self) -> NovastarState:
         """Fetch data from the device."""
         state = await self._client.async_get_state(self._screen_id, self._device_id)
         # Preserve locally tracked states
         state.ftb_active = self._ftb_active
         state.freeze_active = self._freeze_active
+        state.background_enabled = self._background_enabled
+        state.background_id = self._background_id
         return state
