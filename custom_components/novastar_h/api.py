@@ -576,7 +576,12 @@ class NovastarClient:
         return None
 
     def _audio_inputs_from_layers(self, layers: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Build audio input options from layers where audioStatus.isAvailable == 1."""
+        """Build audio input options from layers where audioStatus.isAvailable == 1.
+
+        Prefer layer source.inputId as the option id when available. Some firmware
+        keeps audioStatus.isOpen anchored to one layer (commonly layer 0) while
+        switching source input within that layer.
+        """
         mapped: dict[int, str] = {}
 
         for layer in layers:
@@ -596,8 +601,12 @@ class NovastarClient:
                 continue
 
             source = layer.get("source")
+            option_id = layer_id
             input_name: str | None = None
             if isinstance(source, dict):
+                source_input_id = self._coerce_audio_id(source.get("inputId"))
+                if source_input_id is not None:
+                    option_id = source_input_id
                 source_name = source.get("name")
                 if isinstance(source_name, str) and source_name.strip():
                     input_name = source_name.strip()
@@ -605,12 +614,15 @@ class NovastarClient:
             if not input_name:
                 input_name = "Input"
 
-            mapped[layer_id] = f"{input_name} (Layer {layer_id})"
+            mapped[option_id] = f"{input_name} (Layer {layer_id})"
 
-        return [{"id": layer_id, "name": mapped[layer_id]} for layer_id in sorted(mapped)]
+        return [{"id": option_id, "name": mapped[option_id]} for option_id in sorted(mapped)]
 
     def _selected_audio_input_from_layers(self, layers: list[dict[str, Any]]) -> int | None:
-        """Get selected audio input id from layer audioStatus.isOpen flag."""
+        """Get selected audio input id from layer audioStatus.isOpen flag.
+
+        Prefer open layer source.inputId, fallback to open layerId.
+        """
         selected_ids: list[int] = []
 
         for layer in layers:
@@ -627,7 +639,13 @@ class NovastarClient:
 
             is_open = self._coerce_audio_id(audio_status.get("isOpen"))
             if is_open == 1:
-                selected_ids.append(layer_id)
+                selected_id = layer_id
+                source = layer.get("source")
+                if isinstance(source, dict):
+                    source_input_id = self._coerce_audio_id(source.get("inputId"))
+                    if source_input_id is not None:
+                        selected_id = source_input_id
+                selected_ids.append(selected_id)
 
         if not selected_ids:
             return None
@@ -763,8 +781,11 @@ class NovastarClient:
         screen_id: int = 0,
         device_id: int = 0,
     ) -> bool:
-        """Set active audio input by toggling layer audioStatus.isOpen."""
-        selected_layer_id = int(input_id)
+        """Set active audio input.
+
+        The provided input_id may represent either a layerId or a source inputId.
+        """
+        selected_option_id = int(input_id)
         layer_items = await self.async_get_layers_with_details(
             device_id=int(device_id),
             screen_id=int(screen_id),
@@ -785,11 +806,11 @@ class NovastarClient:
             audio_layers.append(layer)
 
         self._debug_log(
-            "Audio input set request host=%s screen_id=%s device_id=%s selected_layer_id=%s available_audio_layers=%s",
+            "Audio input set request host=%s screen_id=%s device_id=%s selected_option_id=%s available_audio_layers=%s",
             self._host,
             int(screen_id),
             int(device_id),
-            selected_layer_id,
+            selected_option_id,
             [self._coerce_audio_id(layer.get("layerId")) for layer in audio_layers],
         )
 
@@ -797,14 +818,39 @@ class NovastarClient:
             self._debug_log("Audio input set aborted: no layers with audioStatus.isAvailable == 1")
             return False
 
-        if not any(
-            self._coerce_audio_id(layer.get("layerId")) == selected_layer_id
-            for layer in audio_layers
-        ):
+        def _layer_source_input_id(layer: dict[str, Any]) -> int | None:
+            source = layer.get("source")
+            if isinstance(source, dict):
+                return self._coerce_audio_id(source.get("inputId"))
+            return None
+
+        selected_layer: dict[str, Any] | None = None
+        for layer in audio_layers:
+            layer_id = self._coerce_audio_id(layer.get("layerId"))
+            source_input_id = _layer_source_input_id(layer)
+            if layer_id == selected_option_id or source_input_id == selected_option_id:
+                selected_layer = layer
+                break
+
+        if selected_layer is None:
             self._debug_log(
-                "Audio input set aborted: selected layer_id=%s not in available_audio_layers=%s",
-                selected_layer_id,
-                [self._coerce_audio_id(layer.get("layerId")) for layer in audio_layers],
+                "Audio input set aborted: selected_option_id=%s not matched to any available layer/source available=%s",
+                selected_option_id,
+                [
+                    {
+                        "layer_id": self._coerce_audio_id(layer.get("layerId")),
+                        "source_input_id": _layer_source_input_id(layer),
+                    }
+                    for layer in audio_layers
+                ],
+            )
+            return False
+
+        selected_layer_id = self._coerce_audio_id(selected_layer.get("layerId"))
+        if selected_layer_id is None:
+            self._debug_log(
+                "Audio input set aborted: matched layer has no valid layerId selected_option_id=%s",
+                selected_option_id,
             )
             return False
 
@@ -1019,7 +1065,6 @@ class NovastarClient:
             return False
 
         close_phase_layers: list[dict[str, Any]] = []
-        selected_layer: dict[str, Any] | None = None
 
         for layer in audio_layers:
             layer_id = self._coerce_audio_id(layer.get("layerId"))
@@ -1027,8 +1072,7 @@ class NovastarClient:
             if layer_id is None or not isinstance(current_audio_status, dict):
                 continue
             is_open = self._coerce_audio_id(current_audio_status.get("isOpen")) == 1
-            if layer_id == selected_layer_id:
-                selected_layer = layer
+            if layer is selected_layer:
                 continue
             if is_open:
                 close_phase_layers.append(layer)
@@ -1042,13 +1086,6 @@ class NovastarClient:
         for layer in close_phase_layers:
             if await _write_layer_open_state(layer, 0):
                 any_layer_updated = True
-
-        if selected_layer is None:
-            self._debug_log(
-                "Audio input set aborted: selected layer details missing selected_layer_id=%s",
-                selected_layer_id,
-            )
-            return False
 
         self._debug_log("Audio input phase2 open selected_layer_id=%s", selected_layer_id)
         if await _write_layer_open_state(selected_layer, 1):
@@ -1131,7 +1168,7 @@ class NovastarClient:
                     currently_open,
                 )
 
-                target_audio_input_id = selected_layer_id
+                target_audio_input_id = _layer_source_input_id(selected_layer) or selected_option_id
                 selected_source_input_id: int | None = None
                 selected_source_slot_id: int | None = None
                 selected_source_interface_type: int | None = None
