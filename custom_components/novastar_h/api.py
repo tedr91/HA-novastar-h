@@ -1130,6 +1130,74 @@ class NovastarClient:
                     selected_after_write,
                     currently_open,
                 )
+
+                payload_base = {
+                    "screenId": int(screen_id),
+                    "deviceId": int(device_id),
+                }
+                screen_detail_data = await self._async_request("screen/readDetail", payload_base)
+                merged_audio_payload: dict[str, Any] | None = None
+                if isinstance(screen_detail_data, dict):
+                    audio_data = screen_detail_data.get("audio")
+                    if isinstance(audio_data, dict):
+                        merged_audio_payload = dict(audio_data)
+                        merged_audio_payload["inputChannelMode"] = selected_layer_id
+                        merged_audio_payload["inputId"] = selected_layer_id
+                        merged_audio_payload["audioInputId"] = selected_layer_id
+
+                screen_audio_candidates = [
+                    (
+                        "screen/writeDetail",
+                        {
+                            **payload_base,
+                            "audio": merged_audio_payload,
+                        },
+                    )
+                    if merged_audio_payload is not None
+                    else None,
+                    ("audio/writeInput", {**payload_base, "audioInputId": selected_layer_id}),
+                    ("audio/writeInput", {**payload_base, "inputId": selected_layer_id}),
+                    (
+                        "audio/writeInput",
+                        {**payload_base, "inputChannelMode": selected_layer_id},
+                    ),
+                    (
+                        "screen/writeAudioInput",
+                        {**payload_base, "inputId": selected_layer_id},
+                    ),
+                    (
+                        "screen/writeAudioInput",
+                        {**payload_base, "inputChannelMode": selected_layer_id},
+                    ),
+                ]
+
+                self._debug_log(
+                    "Audio input screen-level fallback start selected_layer_id=%s",
+                    selected_layer_id,
+                )
+                for candidate in [c for c in screen_audio_candidates if c is not None]:
+                    endpoint, payload = candidate
+                    self._debug_log(
+                        "Audio input screen-level attempt endpoint=%s payload=%s",
+                        endpoint,
+                        payload,
+                    )
+                    attempt = await self._async_request(endpoint, payload)
+                    if attempt is None:
+                        continue
+                    self._debug_log(
+                        "Audio input screen-level success endpoint=%s response=%s",
+                        endpoint,
+                        attempt,
+                    )
+                    break
+
+                is_selected_applied, selected_after_write, currently_open = await _verify_selected_open()
+                if is_selected_applied:
+                    any_layer_updated = True
+                    selected_layer_updated = True
+
+            if not is_selected_applied:
                 _LOGGER.warning(
                     "Audio input apply failed on host=%s selected_layer_id=%s selected_after_write=%s open_layers=%s",
                     self._host,
@@ -1282,6 +1350,7 @@ class NovastarClient:
                         }
                     )
                 parsed.sort(key=lambda item: item.get("bkgId", 0))
+
                 self._background_list_cache = parsed
 
         return list(self._background_list_cache)
