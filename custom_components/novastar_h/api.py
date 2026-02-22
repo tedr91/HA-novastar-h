@@ -867,6 +867,29 @@ class NovastarClient:
             if isinstance(reverse_control, dict):
                 write_general_payload["reverseControl"] = reverse_control
 
+            write_detail_payload: dict[str, Any] = {
+                **payload_base,
+                "general": dict(general_data),
+                "audioStatus": desired_audio_status,
+            }
+            if isinstance(layer_detail, dict):
+                detail_window = layer_detail.get("window")
+                detail_source = layer_detail.get("source")
+                if isinstance(detail_window, dict):
+                    write_detail_payload["window"] = detail_window
+                if isinstance(detail_source, dict):
+                    write_detail_payload["source"] = detail_source
+                detail_reverse = layer_detail.get("reverseControl")
+                if isinstance(detail_reverse, dict):
+                    write_detail_payload["reverseControl"] = detail_reverse
+            elif isinstance(layer.get("window"), dict) or isinstance(layer.get("source"), dict):
+                layer_window = layer.get("window")
+                layer_source = layer.get("source")
+                if isinstance(layer_window, dict):
+                    write_detail_payload["window"] = layer_window
+                if isinstance(layer_source, dict):
+                    write_detail_payload["source"] = layer_source
+
             candidates = [
                 (
                     "layer/writeGeneral",
@@ -884,6 +907,26 @@ class NovastarClient:
                     {
                         **write_general_payload,
                         "general": {
+                            "isOpen": should_open,
+                        },
+                    },
+                ),
+                (
+                    "layer/writeDetail",
+                    write_detail_payload,
+                ),
+                (
+                    "layer/writeDetail",
+                    {
+                        **write_detail_payload,
+                        "isOpen": should_open,
+                    },
+                ),
+                (
+                    "layer/writeDetail",
+                    {
+                        **write_detail_payload,
+                        "audio": {
                             "isOpen": should_open,
                         },
                     },
