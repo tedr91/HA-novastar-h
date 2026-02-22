@@ -81,7 +81,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = NovastarCoordinator(
         hass, entry, client, device_id=device_id, screen_id=screen_id
     )
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception:
+        _LOGGER.warning(
+            "Initial refresh failed for entry %s; continuing setup with unavailable entities",
+            entry.entry_id,
+            exc_info=True,
+        )
 
     hass.data[DOMAIN][entry.entry_id] = {
         "client": client,
@@ -236,5 +243,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry."""
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
+    await hass.config_entries.async_reload(entry.entry_id)
