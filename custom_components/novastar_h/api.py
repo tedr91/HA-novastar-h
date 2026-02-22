@@ -1174,6 +1174,23 @@ class NovastarClient:
                 if selected_source_interface_type is not None:
                     audio_write_input_payload["interfaceType"] = selected_source_interface_type
 
+                audio_write_input_payload_with_layer = {
+                    **audio_write_input_payload,
+                    "layerId": selected_layer_id,
+                    "audioInputId": target_audio_input_id,
+                    "inputChannelMode": target_audio_input_id,
+                }
+
+                screen_write_audio_input_payload = {
+                    **payload_base,
+                    "inputId": target_audio_input_id,
+                }
+                screen_write_audio_input_payload_with_layer = {
+                    **screen_write_audio_input_payload,
+                    "layerId": selected_layer_id,
+                    "audioInputId": target_audio_input_id,
+                }
+
                 screen_audio_candidates = [
                     (
                         "screen/writeDetail",
@@ -1186,17 +1203,29 @@ class NovastarClient:
                     else None,
                     ("audio/writeInput", {**payload_base, "audioInputId": target_audio_input_id}),
                     ("audio/writeInput", audio_write_input_payload),
+                    ("audio/writeInput", audio_write_input_payload_with_layer),
                     (
                         "audio/writeInput",
                         {**payload_base, "inputChannelMode": target_audio_input_id},
                     ),
                     (
                         "screen/writeAudioInput",
-                        {**payload_base, "inputId": target_audio_input_id},
+                        screen_write_audio_input_payload,
+                    ),
+                    ("screen/writeAudioInput", screen_write_audio_input_payload_with_layer),
+                    (
+                        "screen/writeAudioInput",
+                        {
+                            **screen_write_audio_input_payload,
+                            "inputChannelMode": target_audio_input_id,
+                        },
                     ),
                     (
                         "screen/writeAudioInput",
-                        {**payload_base, "inputChannelMode": target_audio_input_id},
+                        {
+                            **screen_write_audio_input_payload_with_layer,
+                            "inputChannelMode": target_audio_input_id,
+                        },
                     ),
                 ]
 
@@ -1208,6 +1237,7 @@ class NovastarClient:
                     selected_source_slot_id,
                     selected_source_interface_type,
                 )
+                screen_fallback_success_endpoint: str | None = None
                 for candidate in [c for c in screen_audio_candidates if c is not None]:
                     endpoint, payload = candidate
                     self._debug_log(
@@ -1223,7 +1253,15 @@ class NovastarClient:
                         endpoint,
                         attempt,
                     )
+                    screen_fallback_success_endpoint = endpoint
                     break
+
+                if screen_fallback_success_endpoint is None:
+                    self._debug_log(
+                        "Audio input screen-level fallback had no successful endpoint selected_layer_id=%s target_audio_input_id=%s",
+                        selected_layer_id,
+                        target_audio_input_id,
+                    )
 
                 is_selected_applied, selected_after_write, currently_open = await _verify_selected_open()
                 if is_selected_applied:
@@ -1232,12 +1270,15 @@ class NovastarClient:
 
             if not is_selected_applied:
                 _LOGGER.warning(
-                    "Audio input apply failed on host=%s selected_layer_id=%s target_audio_input_id=%s selected_after_write=%s open_layers=%s",
+                    "Audio input apply failed on host=%s selected_layer_id=%s target_audio_input_id=%s selected_after_write=%s open_layers=%s screen_fallback_success_endpoint=%s",
                     self._host,
                     selected_layer_id,
                     target_audio_input_id if "target_audio_input_id" in locals() else None,
                     selected_after_write,
                     currently_open,
+                    screen_fallback_success_endpoint
+                    if "screen_fallback_success_endpoint" in locals()
+                    else None,
                 )
 
         self._debug_log(
