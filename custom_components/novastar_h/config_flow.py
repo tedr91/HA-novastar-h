@@ -15,11 +15,13 @@ from .api import NovastarClient
 from .const import (
     CONF_ALLOW_RAW_COMMANDS,
     CONF_ENCRYPTION,
+    CONF_ENABLE_DEBUG_LOGGING,
     CONF_LAYER_SELECT_PREPOPULATE_COUNT,
     CONF_PROJECT_ID,
     CONF_SECRET_KEY,
     DEFAULT_ALLOW_RAW_COMMANDS,
     DEFAULT_ENCRYPTION,
+    DEFAULT_ENABLE_DEBUG_LOGGING,
     DEFAULT_LAYER_SELECT_PREPOPULATE_COUNT,
     DEFAULT_NAME,
     DEFAULT_PORT,
@@ -140,6 +142,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_SECRET_KEY: secret_key,
                         CONF_ENCRYPTION: encryption,
                         CONF_ALLOW_RAW_COMMANDS: DEFAULT_ALLOW_RAW_COMMANDS,
+                        CONF_ENABLE_DEBUG_LOGGING: DEFAULT_ENABLE_DEBUG_LOGGING,
                     },
                 )
             errors["base"] = "cannot_connect"
@@ -193,6 +196,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_SECRET_KEY: secret_key,
                         CONF_ENCRYPTION: encryption,
                         CONF_ALLOW_RAW_COMMANDS: DEFAULT_ALLOW_RAW_COMMANDS,
+                        CONF_ENABLE_DEBUG_LOGGING: DEFAULT_ENABLE_DEBUG_LOGGING,
                     },
                 )
             errors["base"] = "cannot_connect"
@@ -301,6 +305,7 @@ class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
                         CONF_SECRET_KEY: secret_key,
                         CONF_ENCRYPTION: encryption,
                         CONF_ALLOW_RAW_COMMANDS: DEFAULT_ALLOW_RAW_COMMANDS,
+                        CONF_ENABLE_DEBUG_LOGGING: DEFAULT_ENABLE_DEBUG_LOGGING,
                     },
                 )
             errors["base"] = "cannot_connect"
@@ -349,6 +354,13 @@ class NovastarOptionsFlowHandler(OptionsFlow):
             CONF_ALLOW_RAW_COMMANDS,
             self.config_entry.data.get(CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS),
         )
+        current_enable_debug_logging = self.config_entry.options.get(
+            CONF_ENABLE_DEBUG_LOGGING,
+            self.config_entry.data.get(
+                CONF_ENABLE_DEBUG_LOGGING,
+                DEFAULT_ENABLE_DEBUG_LOGGING,
+            ),
+        )
         current_layer_count = self.config_entry.options.get(
             CONF_LAYER_SELECT_PREPOPULATE_COUNT,
             self.config_entry.data.get(
@@ -371,6 +383,10 @@ class NovastarOptionsFlowHandler(OptionsFlow):
                 {
                     vol.Optional(
                         CONF_ALLOW_RAW_COMMANDS, default=current_allow_raw
+                    ): bool,
+                    vol.Optional(
+                        CONF_ENABLE_DEBUG_LOGGING,
+                        default=current_enable_debug_logging,
                     ): bool,
                     vol.Optional(
                         _OPT_LAYER_COUNT_UI,

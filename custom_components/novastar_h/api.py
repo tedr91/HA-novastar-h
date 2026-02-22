@@ -90,6 +90,7 @@ class NovastarClient:
         project_id: str = "",
         secret_key: str = "",
         encryption: bool = False,
+        enable_debug_logging: bool = False,
         timeout: float = 10.0,
     ) -> None:
         """Initialize the client.
@@ -100,6 +101,7 @@ class NovastarClient:
             project_id: pId from device OpenAPI settings
             secret_key: secretKey from device OpenAPI settings
             encryption: Enable DES encryption for payloads
+            enable_debug_logging: Enable additional debug logs for troubleshooting
             timeout: Request timeout in seconds
         """
         self._host = host
@@ -107,6 +109,7 @@ class NovastarClient:
         self._project_id = project_id
         self._secret_key = secret_key
         self._encryption = encryption
+        self._enable_debug_logging = enable_debug_logging
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._base_url = f"http://{host}:{port}/open/api"
         self._input_detail_cache: dict[int, dict[str, Any]] = {}
@@ -121,6 +124,11 @@ class NovastarClient:
         self._background_list_cache: list[dict[str, Any]] = []
         self._background_refresh_counter = 0
         self._force_refresh_backgrounds = False
+
+    def _debug_log(self, message: str, *args: Any) -> None:
+        """Emit debug log only when debug logging option is enabled."""
+        if self._enable_debug_logging:
+            _LOGGER.debug(message, *args)
 
     @property
     def host(self) -> str:
@@ -778,10 +786,25 @@ class NovastarClient:
                 continue
             audio_layers.append((layer_id, audio_status))
 
+        self._debug_log(
+            "Audio input set request host=%s screen_id=%s device_id=%s selected_layer_id=%s available_audio_layers=%s",
+            self._host,
+            int(screen_id),
+            int(device_id),
+            selected_layer_id,
+            [layer_id for layer_id, _ in audio_layers],
+        )
+
         if not audio_layers:
+            self._debug_log("Audio input set aborted: no layers with audioStatus.isAvailable == 1")
             return False
 
         if not any(layer_id == selected_layer_id for layer_id, _ in audio_layers):
+            self._debug_log(
+                "Audio input set aborted: selected layer_id=%s not in available_audio_layers=%s",
+                selected_layer_id,
+                [layer_id for layer_id, _ in audio_layers],
+            )
             return False
 
         any_layer_updated = False
@@ -826,8 +849,31 @@ class NovastarClient:
                     },
                 ),
             ]
-            valid_candidates = [c for c in candidates if c is not None]
-            result = await self._async_request_first_success(valid_candidates)
+
+            result = None
+            for endpoint, payload in candidates:
+                self._debug_log(
+                    "Audio input write attempt layer_id=%s endpoint=%s payload=%s",
+                    layer_id,
+                    endpoint,
+                    payload,
+                )
+                attempt = await self._async_request(endpoint, payload)
+                if attempt is not None:
+                    result = attempt
+                    self._debug_log(
+                        "Audio input write success layer_id=%s endpoint=%s response=%s",
+                        layer_id,
+                        endpoint,
+                        attempt,
+                    )
+                    break
+                self._debug_log(
+                    "Audio input write failed layer_id=%s endpoint=%s",
+                    layer_id,
+                    endpoint,
+                )
+
             if result is not None:
                 any_layer_updated = True
                 if layer_id == selected_layer_id:
@@ -835,6 +881,13 @@ class NovastarClient:
 
         if any_layer_updated:
             self._force_refresh_layer_details = True
+
+        self._debug_log(
+            "Audio input write complete selected_layer_id=%s any_layer_updated=%s selected_layer_updated=%s",
+            selected_layer_id,
+            any_layer_updated,
+            selected_layer_updated,
+        )
 
         return any_layer_updated and selected_layer_updated
 

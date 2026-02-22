@@ -14,12 +14,14 @@ from .const import (
     CONF_ALLOW_RAW_COMMANDS,
     CONF_DEVICE_ID,
     CONF_ENCRYPTION,
+    CONF_ENABLE_DEBUG_LOGGING,
     CONF_PROJECT_ID,
     CONF_SCREEN_ID,
     CONF_SECRET_KEY,
     DEFAULT_ALLOW_RAW_COMMANDS,
     DEFAULT_DEVICE_ID,
     DEFAULT_ENCRYPTION,
+    DEFAULT_ENABLE_DEBUG_LOGGING,
     DEFAULT_PORT,
     DEFAULT_SCREEN_ID,
     DEFAULT_TIMEOUT,
@@ -79,6 +81,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         project_id=entry.data[CONF_PROJECT_ID],
         secret_key=entry.data[CONF_SECRET_KEY],
         encryption=entry.data.get(CONF_ENCRYPTION, DEFAULT_ENCRYPTION),
+        enable_debug_logging=entry.options.get(
+            CONF_ENABLE_DEBUG_LOGGING,
+            entry.data.get(
+                CONF_ENABLE_DEBUG_LOGGING,
+                DEFAULT_ENABLE_DEBUG_LOGGING,
+            ),
+        ),
         timeout=DEFAULT_TIMEOUT,
     )
 

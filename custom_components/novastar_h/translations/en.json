@@ -91,11 +91,13 @@
         "title": "Novastar Options",
         "data": {
           "allow_raw_commands": "Allow Raw Commands",
+          "enable_debug_logging": "Enable debug logging",
           "layer_count": "Number of Layers to pre-populate for input selection",
           "layer_select_prepopulate_count": "Number of Layers to pre-populate for input selection"
         },
         "data_description": {
           "allow_raw_commands": "Enable sending raw API commands via service call",
+          "enable_debug_logging": "Enable detailed debug logs for troubleshooting audio input control",
           "layer_count": "How many fixed Layer X Source select entities to create",
           "layer_select_prepopulate_count": "How many fixed Layer X Source select entities to create"
         }
