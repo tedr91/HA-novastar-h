@@ -9,6 +9,7 @@ from homeassistant.components import ssdp, zeroconf
 from homeassistant.config_entries import ConfigFlow, FlowResult, OptionsFlow
 from homeassistant.const import CONF_HOST, CONF_NAME, CONF_PORT
 from homeassistant.core import callback
+from homeassistant.helpers import selector
 
 from .api import NovastarClient
 from .const import (
@@ -350,6 +351,14 @@ class NovastarOptionsFlowHandler(OptionsFlow):
                 DEFAULT_LAYER_SELECT_PREPOPULATE_COUNT,
             ),
         )
+        if isinstance(current_layer_count, bool):
+            current_layer_count = DEFAULT_LAYER_SELECT_PREPOPULATE_COUNT
+        else:
+            try:
+                current_layer_count = int(current_layer_count)
+            except (TypeError, ValueError):
+                current_layer_count = DEFAULT_LAYER_SELECT_PREPOPULATE_COUNT
+        current_layer_count = max(1, min(16, current_layer_count))
 
         return self.async_show_form(
             step_id="init",
@@ -361,7 +370,14 @@ class NovastarOptionsFlowHandler(OptionsFlow):
                     vol.Optional(
                         _OPT_LAYER_COUNT_UI,
                         default=current_layer_count,
-                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=16)),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1,
+                            max=16,
+                            step=1,
+                            mode=selector.NumberSelectorMode.BOX,
+                        )
+                    ),
                 }
             ),
         )
