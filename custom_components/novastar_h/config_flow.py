@@ -14,10 +14,12 @@ from .api import NovastarClient
 from .const import (
     CONF_ALLOW_RAW_COMMANDS,
     CONF_ENCRYPTION,
+    CONF_LAYER_SELECT_PREPOPULATE_COUNT,
     CONF_PROJECT_ID,
     CONF_SECRET_KEY,
     DEFAULT_ALLOW_RAW_COMMANDS,
     DEFAULT_ENCRYPTION,
+    DEFAULT_LAYER_SELECT_PREPOPULATE_COUNT,
     DEFAULT_NAME,
     DEFAULT_PORT,
     DOMAIN,
@@ -335,6 +337,13 @@ class NovastarOptionsFlowHandler(OptionsFlow):
             CONF_ALLOW_RAW_COMMANDS,
             self.config_entry.data.get(CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS),
         )
+        current_layer_count = self.config_entry.options.get(
+            CONF_LAYER_SELECT_PREPOPULATE_COUNT,
+            self.config_entry.data.get(
+                CONF_LAYER_SELECT_PREPOPULATE_COUNT,
+                DEFAULT_LAYER_SELECT_PREPOPULATE_COUNT,
+            ),
+        )
 
         return self.async_show_form(
             step_id="init",
@@ -343,6 +352,10 @@ class NovastarOptionsFlowHandler(OptionsFlow):
                     vol.Optional(
                         CONF_ALLOW_RAW_COMMANDS, default=current_allow_raw
                     ): bool,
+                    vol.Optional(
+                        CONF_LAYER_SELECT_PREPOPULATE_COUNT,
+                        default=current_layer_count,
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1, max=16)),
                 }
             ),
         )

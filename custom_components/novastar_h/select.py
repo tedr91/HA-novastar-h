@@ -10,7 +10,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import NovastarDeviceInfo
-from .const import DEFAULT_NAME, DOMAIN
+from .const import (
+    CONF_LAYER_SELECT_PREPOPULATE_COUNT,
+    DEFAULT_LAYER_SELECT_PREPOPULATE_COUNT,
+    DEFAULT_NAME,
+    DOMAIN,
+)
 from .coordinator import NovastarCoordinator
 
 
@@ -66,11 +71,20 @@ async def async_setup_entry(
     """Set up Novastar select entities."""
     coordinator: NovastarCoordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     device_info: NovastarDeviceInfo = hass.data[DOMAIN][entry.entry_id]["device_info"]
+    layer_count = entry.options.get(
+        CONF_LAYER_SELECT_PREPOPULATE_COUNT,
+        entry.data.get(
+            CONF_LAYER_SELECT_PREPOPULATE_COUNT,
+            DEFAULT_LAYER_SELECT_PREPOPULATE_COUNT,
+        ),
+    )
+    layer_count = _coerce_int(layer_count) or DEFAULT_LAYER_SELECT_PREPOPULATE_COUNT
+
     entities: list[SelectEntity] = [NovastarPresetSelect(entry, coordinator, device_info)]
     entities.extend(
         [
             NovastarLayerSourceSelect(entry, coordinator, device_info, layer_id)
-            for layer_id in range(4)
+            for layer_id in range(max(1, layer_count))
         ]
     )
     async_add_entities(entities)
