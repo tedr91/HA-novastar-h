@@ -346,6 +346,9 @@ class NovastarClient:
             "preset/play",
             {"presetId": preset_id, "screenId": screen_id, "deviceId": device_id},
         )
+        if data is not None:
+            self._force_refresh_input_details = True
+            self._force_refresh_layer_details = True
         return data is not None
 
     async def async_set_brightness(
@@ -457,7 +460,11 @@ class NovastarClient:
         state.inputs = await self.async_get_inputs_with_details(device_id)
         state.layers = await self.async_get_layers_with_details(device_id, screen_id)
         state.backgrounds = await self.async_get_background_list(device_id)
-        audio_state = await self.async_get_audio_state(screen_id, device_id)
+        audio_state = await self.async_get_audio_state(
+            screen_id,
+            device_id,
+            layers=state.layers,
+        )
         state.audio_inputs = audio_state.get("inputs", [])
         state.audio_outputs = audio_state.get("outputs", [])
         state.audio_input_id = audio_state.get("input_id")
@@ -560,10 +567,71 @@ class NovastarClient:
             return int(value)
         return None
 
+    def _audio_inputs_from_layers(self, layers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Build audio input options from layers where audioStatus.isAvailable == 1."""
+        mapped: dict[int, str] = {}
+
+        for layer in layers:
+            if not isinstance(layer, dict):
+                continue
+
+            layer_id = self._coerce_audio_id(layer.get("layerId"))
+            if layer_id is None:
+                continue
+
+            audio_status = layer.get("audioStatus")
+            if not isinstance(audio_status, dict):
+                continue
+
+            is_available = self._coerce_audio_id(audio_status.get("isAvailable"))
+            if is_available != 1:
+                continue
+
+            general = layer.get("general")
+            layer_name: str | None = None
+            if isinstance(general, dict):
+                name = general.get("name")
+                if isinstance(name, str) and name.strip():
+                    layer_name = name.strip()
+
+            if not layer_name:
+                name = layer.get("name")
+                if isinstance(name, str) and name.strip():
+                    layer_name = name.strip()
+
+            mapped[layer_id] = layer_name or f"Layer {layer_id}"
+
+        return [{"id": layer_id, "name": mapped[layer_id]} for layer_id in sorted(mapped)]
+
+    def _selected_audio_input_from_layers(self, layers: list[dict[str, Any]]) -> int | None:
+        """Get selected audio input id from layer audioStatus.isOpen flag."""
+        selected_ids: list[int] = []
+
+        for layer in layers:
+            if not isinstance(layer, dict):
+                continue
+
+            layer_id = self._coerce_audio_id(layer.get("layerId"))
+            if layer_id is None:
+                continue
+
+            audio_status = layer.get("audioStatus")
+            if not isinstance(audio_status, dict):
+                continue
+
+            is_open = self._coerce_audio_id(audio_status.get("isOpen"))
+            if is_open == 1:
+                selected_ids.append(layer_id)
+
+        if not selected_ids:
+            return None
+        return sorted(selected_ids)[0]
+
     async def async_get_audio_state(
         self,
         screen_id: int = 0,
         device_id: int = 0,
+        layers: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Get audio routes and level with endpoint fallbacks."""
         payload = {"screenId": screen_id, "deviceId": device_id}
@@ -593,14 +661,18 @@ class NovastarClient:
             "muted": None,
         }
 
+        if isinstance(layers, list):
+            result["inputs"] = self._audio_inputs_from_layers(layers)
+            selected_input_id = self._selected_audio_input_from_layers(layers)
+            if selected_input_id is not None:
+                result["input_id"] = selected_input_id
+
         if isinstance(list_data, dict):
             normalized_inputs, normalized_outputs = self._extract_audio_options_from_container(
                 list_data,
                 ("inputs", "audioInputs", "inputList"),
                 ("outputs", "audioOutputs", "outputList"),
             )
-            if normalized_inputs:
-                result["inputs"] = normalized_inputs
             if normalized_outputs:
                 result["outputs"] = normalized_outputs
 
@@ -628,14 +700,12 @@ class NovastarClient:
             elif isinstance(muted, (int, float)):
                 result["muted"] = bool(int(muted))
 
-            if not result["inputs"] or not result["outputs"]:
+            if not result["outputs"]:
                 normalized_inputs, normalized_outputs = self._extract_audio_options_from_container(
                     detail_data,
                     ("inputs", "audioInputs", "inputList"),
                     ("outputs", "audioOutputs", "outputList"),
                 )
-                if normalized_inputs and not result["inputs"]:
-                    result["inputs"] = normalized_inputs
                 if normalized_outputs and not result["outputs"]:
                     result["outputs"] = normalized_outputs
 
@@ -669,10 +739,15 @@ class NovastarClient:
                     ("inputs", "audioInputs", "inputList"),
                     ("outputs", "audioOutputs", "outputList"),
                 )
-                if normalized_inputs:
-                    result["inputs"] = normalized_inputs
                 if normalized_outputs:
                     result["outputs"] = normalized_outputs
+
+        if isinstance(layers, list):
+            selected_input_id = self._selected_audio_input_from_layers(layers)
+            if selected_input_id is not None:
+                result["input_id"] = selected_input_id
+            else:
+                result["input_id"] = None
 
         return result
 
