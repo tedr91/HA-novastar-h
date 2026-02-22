@@ -812,6 +812,12 @@ class NovastarClient:
             layers_key: updated_layers,
         }
 
+        self._debug_log(
+            "Audio input screenLayerLayout write payload host=%s payload=%s",
+            self._host,
+            write_payload,
+        )
+
         write_result = await self._async_request("layer/screenLayerLayout", write_payload)
         if write_result is None:
             _LOGGER.warning(
