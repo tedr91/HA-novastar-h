@@ -657,24 +657,11 @@ class NovastarClient:
         device_id: int = 0,
         layers: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        """Get audio routes and level with endpoint fallbacks."""
+        """Get audio routes and level."""
         payload = {"screenId": screen_id, "deviceId": device_id}
         screen_detail_data = await self._async_request("screen/readDetail", payload)
-        detail_data = await self._async_request_first_success(
-            [
-                ("audio/readDetail", payload),
-                ("screen/readAudio", payload),
-                ("audio/read", payload),
-            ]
-        )
-
-        list_data = await self._async_request_first_success(
-            [
-                ("audio/readList", payload),
-                ("audio/readAllList", {"deviceId": device_id}),
-                ("screen/readAudioList", payload),
-            ]
-        )
+        detail_data = await self._async_request("audio/readDetail", payload)
+        list_data = await self._async_request("audio/readList", payload)
 
         result: dict[str, Any] = {
             "inputs": [],
@@ -857,17 +844,17 @@ class NovastarClient:
         any_layer_updated = False
         selected_layer_updated = False
 
-        async def _write_layer_open_state(layer: dict[str, Any], should_open: int) -> bool:
-            """Write one layer audio open state using layer/writeGeneral variants."""
+        async def _build_write_general_payload(
+            layer: dict[str, Any], should_open: int
+        ) -> dict[str, Any] | None:
+            """Build layer/writeGeneral payload for one layer audio open state."""
             layer_id = self._coerce_audio_id(layer.get("layerId"))
             current_audio_status = layer.get("audioStatus")
             if layer_id is None or not isinstance(current_audio_status, dict):
-                return False
+                return None
 
             desired_audio_status = dict(current_audio_status)
             desired_audio_status["isOpen"] = should_open
-            desired_audio_status_bool = dict(current_audio_status)
-            desired_audio_status_bool["isOpen"] = should_open == 1
 
             payload_base = {
                 "screenId": int(screen_id),
@@ -891,7 +878,7 @@ class NovastarClient:
                     "Audio input write skipped layer_id=%s: missing general data for layer/writeGeneral",
                     layer_id,
                 )
-                return False
+                return None
 
             write_general_payload = {
                 **payload_base,
@@ -907,21 +894,6 @@ class NovastarClient:
                 "audioStatus": desired_audio_status,
             }
 
-            write_general_payload_nested_audio = {
-                **payload_base,
-                "general": {
-                    **general_data,
-                    "audioStatus": desired_audio_status,
-                },
-            }
-            write_general_payload_nested_audio_bool = {
-                **payload_base,
-                "general": {
-                    **general_data,
-                    "audioStatus": desired_audio_status_bool,
-                },
-            }
-
             optional_lock = self._coerce_audio_id(general_data.get("lock"))
             if optional_lock is not None:
                 write_general_payload["lock"] = optional_lock
@@ -929,168 +901,22 @@ class NovastarClient:
             reverse_control = layer_detail.get("reverseControl") if isinstance(layer_detail, dict) else None
             if isinstance(reverse_control, dict):
                 write_general_payload["reverseControl"] = reverse_control
-
-            write_detail_payload: dict[str, Any] = {
-                **payload_base,
-                "general": dict(general_data),
-                "audioStatus": desired_audio_status,
-            }
-            write_detail_payload_general_audio = {
-                **payload_base,
-                "general": {
-                    **general_data,
-                    "audioStatus": desired_audio_status,
-                },
-            }
-            write_audio_status_payload = {
-                **payload_base,
-                "audioStatus": desired_audio_status,
-            }
-            write_audio_status_payload_bool = {
-                **payload_base,
-                "audioStatus": desired_audio_status_bool,
-            }
-            if isinstance(layer_detail, dict):
-                detail_window = layer_detail.get("window")
-                detail_source = layer_detail.get("source")
-                if isinstance(detail_window, dict):
-                    write_detail_payload["window"] = detail_window
-                    write_detail_payload_general_audio["window"] = detail_window
-                if isinstance(detail_source, dict):
-                    write_detail_payload["source"] = detail_source
-                    write_detail_payload_general_audio["source"] = detail_source
-                detail_reverse = layer_detail.get("reverseControl")
-                if isinstance(detail_reverse, dict):
-                    write_detail_payload["reverseControl"] = detail_reverse
-                    write_detail_payload_general_audio["reverseControl"] = detail_reverse
-            elif isinstance(layer.get("window"), dict) or isinstance(layer.get("source"), dict):
-                layer_window = layer.get("window")
-                layer_source = layer.get("source")
-                if isinstance(layer_window, dict):
-                    write_detail_payload["window"] = layer_window
-                    write_detail_payload_general_audio["window"] = layer_window
-                if isinstance(layer_source, dict):
-                    write_detail_payload["source"] = layer_source
-                    write_detail_payload_general_audio["source"] = layer_source
-
-            candidates = [
-                (
-                    "layer/writeGeneral",
-                    write_general_payload,
-                ),
-                (
-                    "layer/writeGeneral",
-                    {
-                        **write_general_payload,
-                        "isOpen": should_open,
-                    },
-                ),
-                (
-                    "layer/writeGeneral",
-                    {
-                        **write_general_payload,
-                        "audioStatus": desired_audio_status_bool,
-                    },
-                ),
-                (
-                    "layer/writeGeneral",
-                    write_general_payload_nested_audio,
-                ),
-                (
-                    "layer/writeGeneral",
-                    write_general_payload_nested_audio_bool,
-                ),
-                (
-                    "layer/writeDetail",
-                    write_detail_payload,
-                ),
-                (
-                    "layer/writeDetail",
-                    write_detail_payload_general_audio,
-                ),
-                (
-                    "layer/writeDetail",
-                    {
-                        **write_detail_payload,
-                        "audioStatus": desired_audio_status_bool,
-                    },
-                ),
-                (
-                    "layer/writeDetail",
-                    {
-                        **write_detail_payload,
-                        "audio": {
-                            "isOpen": should_open,
-                        },
-                    },
-                ),
-                (
-                    "layer/writeAudioStatus",
-                    write_audio_status_payload,
-                ),
-                (
-                    "layer/writeAudioStatus",
-                    write_audio_status_payload_bool,
-                ),
-                (
-                    "layer/writeAudioStatus",
-                    {
-                        **payload_base,
-                        "isOpen": should_open,
-                    },
-                ),
-            ]
-
-            for endpoint, payload in candidates:
-                self._debug_log(
-                    "Audio input write attempt layer_id=%s endpoint=%s payload=%s",
-                    layer_id,
-                    endpoint,
-                    payload,
-                )
-                attempt = await self._async_request(endpoint, payload)
-                if attempt is not None:
-                    self._debug_log(
-                        "Audio input write success layer_id=%s endpoint=%s response=%s",
-                        layer_id,
-                        endpoint,
-                        attempt,
-                    )
-                    return True
-                self._debug_log(
-                    "Audio input write failed layer_id=%s endpoint=%s",
-                    layer_id,
-                    endpoint,
-                )
-            return False
-
-        close_phase_layers: list[dict[str, Any]] = []
+            return write_general_payload
 
         for layer in audio_layers:
             layer_id = self._coerce_audio_id(layer.get("layerId"))
             current_audio_status = layer.get("audioStatus")
             if layer_id is None or not isinstance(current_audio_status, dict):
                 continue
-            is_open = self._coerce_audio_id(current_audio_status.get("isOpen")) == 1
-            if layer is selected_layer:
+            should_open = 1 if layer is selected_layer else 0
+            payload = await _build_write_general_payload(layer, should_open)
+            if payload is None:
                 continue
-            if is_open:
-                close_phase_layers.append(layer)
-
-        self._debug_log(
-            "Audio input phase1 close layers=%s before opening selected_layer_id=%s",
-            [self._coerce_audio_id(layer.get("layerId")) for layer in close_phase_layers],
-            selected_layer_id,
-        )
-
-        for layer in close_phase_layers:
-            if await _write_layer_open_state(layer, 0):
+            attempt = await self._async_request("layer/writeGeneral", payload)
+            if attempt is not None:
                 any_layer_updated = True
-
-        self._debug_log("Audio input phase2 open selected_layer_id=%s", selected_layer_id)
-        if await _write_layer_open_state(selected_layer, 1):
-            any_layer_updated = True
-            selected_layer_updated = True
+                if should_open == 1:
+                    selected_layer_updated = True
 
         if any_layer_updated:
             self._force_refresh_layer_details = True
@@ -1109,214 +935,20 @@ class NovastarClient:
                 and isinstance(layer.get("audioStatus"), dict)
                 and self._coerce_audio_id(layer["audioStatus"].get("isOpen")) == 1
             ]
-            return selected_after == selected_layer_id, selected_after, open_layers
+            is_selected = selected_after in (selected_option_id, selected_layer_id)
+            return is_selected, selected_after, open_layers
 
         is_selected_applied, selected_after_write, currently_open = await _verify_selected_open()
 
         if not is_selected_applied:
-            self._debug_log(
-                "Audio input verification failed after close-then-open selected_layer_id=%s selected_after_write=%s open_layers=%s",
+            _LOGGER.warning(
+                "Audio input apply failed on host=%s selected_option_id=%s selected_layer_id=%s selected_after_write=%s open_layers=%s",
+                self._host,
+                selected_option_id,
                 selected_layer_id,
                 selected_after_write,
                 currently_open,
             )
-
-            # Fallback order for firmware variants: open selected first, then close others.
-            self._debug_log(
-                "Audio input fallback attempt: open selected first then close others selected_layer_id=%s",
-                selected_layer_id,
-            )
-
-            self._force_refresh_layer_details = True
-            retry_layers = await self.async_get_layers_with_details(
-                device_id=int(device_id),
-                screen_id=int(screen_id),
-            )
-
-            retry_selected_layer: dict[str, Any] | None = None
-            retry_close_layers: list[dict[str, Any]] = []
-            for layer in retry_layers:
-                if not isinstance(layer, dict):
-                    continue
-                layer_id = self._coerce_audio_id(layer.get("layerId"))
-                audio_status = layer.get("audioStatus")
-                if layer_id is None or not isinstance(audio_status, dict):
-                    continue
-                if self._coerce_audio_id(audio_status.get("isAvailable")) != 1:
-                    continue
-                is_open = self._coerce_audio_id(audio_status.get("isOpen")) == 1
-                if layer_id == selected_layer_id:
-                    retry_selected_layer = layer
-                elif is_open:
-                    retry_close_layers.append(layer)
-
-            if retry_selected_layer is not None:
-                if await _write_layer_open_state(retry_selected_layer, 1):
-                    any_layer_updated = True
-                    selected_layer_updated = True
-
-            for layer in retry_close_layers:
-                if await _write_layer_open_state(layer, 0):
-                    any_layer_updated = True
-
-            is_selected_applied, selected_after_write, currently_open = await _verify_selected_open()
-            if not is_selected_applied:
-                self._debug_log(
-                    "Audio input verification failed after fallback selected_layer_id=%s selected_after_write=%s open_layers=%s",
-                    selected_layer_id,
-                    selected_after_write,
-                    currently_open,
-                )
-
-                target_audio_input_id = _layer_source_input_id(selected_layer) or selected_option_id
-                selected_source_input_id: int | None = None
-                selected_source_slot_id: int | None = None
-                selected_source_interface_type: int | None = None
-                source_layer_for_routing = retry_selected_layer or selected_layer
-                if isinstance(source_layer_for_routing, dict):
-                    source_data = source_layer_for_routing.get("source")
-                    if isinstance(source_data, dict):
-                        selected_source_input_id = self._coerce_audio_id(
-                            source_data.get("inputId")
-                        )
-                        selected_source_slot_id = self._coerce_audio_id(
-                            source_data.get("slotId")
-                        )
-                        selected_source_interface_type = self._coerce_audio_id(
-                            source_data.get("interfaceType")
-                        )
-                        if selected_source_input_id is not None:
-                            target_audio_input_id = selected_source_input_id
-
-                payload_base = {
-                    "screenId": int(screen_id),
-                    "deviceId": int(device_id),
-                }
-                screen_detail_data = await self._async_request("screen/readDetail", payload_base)
-                merged_audio_payload: dict[str, Any] | None = None
-                if isinstance(screen_detail_data, dict):
-                    audio_data = screen_detail_data.get("audio")
-                    if isinstance(audio_data, dict):
-                        merged_audio_payload = dict(audio_data)
-                        merged_audio_payload["inputChannelMode"] = target_audio_input_id
-                        merged_audio_payload["inputId"] = target_audio_input_id
-                        merged_audio_payload["audioInputId"] = target_audio_input_id
-
-                audio_write_input_payload = {
-                    **payload_base,
-                    "inputId": target_audio_input_id,
-                }
-                if selected_source_slot_id is not None:
-                    audio_write_input_payload["slotId"] = selected_source_slot_id
-                if selected_source_interface_type is not None:
-                    audio_write_input_payload["interfaceType"] = selected_source_interface_type
-
-                audio_write_input_payload_with_layer = {
-                    **audio_write_input_payload,
-                    "layerId": selected_layer_id,
-                    "audioInputId": target_audio_input_id,
-                    "inputChannelMode": target_audio_input_id,
-                }
-
-                screen_write_audio_input_payload = {
-                    **payload_base,
-                    "inputId": target_audio_input_id,
-                }
-                screen_write_audio_input_payload_with_layer = {
-                    **screen_write_audio_input_payload,
-                    "layerId": selected_layer_id,
-                    "audioInputId": target_audio_input_id,
-                }
-
-                screen_audio_candidates = [
-                    (
-                        "screen/writeDetail",
-                        {
-                            **payload_base,
-                            "audio": merged_audio_payload,
-                        },
-                    )
-                    if merged_audio_payload is not None
-                    else None,
-                    ("audio/writeInput", {**payload_base, "audioInputId": target_audio_input_id}),
-                    ("audio/writeInput", audio_write_input_payload),
-                    ("audio/writeInput", audio_write_input_payload_with_layer),
-                    (
-                        "audio/writeInput",
-                        {**payload_base, "inputChannelMode": target_audio_input_id},
-                    ),
-                    (
-                        "screen/writeAudioInput",
-                        screen_write_audio_input_payload,
-                    ),
-                    ("screen/writeAudioInput", screen_write_audio_input_payload_with_layer),
-                    (
-                        "screen/writeAudioInput",
-                        {
-                            **screen_write_audio_input_payload,
-                            "inputChannelMode": target_audio_input_id,
-                        },
-                    ),
-                    (
-                        "screen/writeAudioInput",
-                        {
-                            **screen_write_audio_input_payload_with_layer,
-                            "inputChannelMode": target_audio_input_id,
-                        },
-                    ),
-                ]
-
-                self._debug_log(
-                    "Audio input screen-level fallback start selected_layer_id=%s target_audio_input_id=%s source_input_id=%s source_slot_id=%s source_interface_type=%s",
-                    selected_layer_id,
-                    target_audio_input_id,
-                    selected_source_input_id,
-                    selected_source_slot_id,
-                    selected_source_interface_type,
-                )
-                screen_fallback_success_endpoint: str | None = None
-                for candidate in [c for c in screen_audio_candidates if c is not None]:
-                    endpoint, payload = candidate
-                    self._debug_log(
-                        "Audio input screen-level attempt endpoint=%s payload=%s",
-                        endpoint,
-                        payload,
-                    )
-                    attempt = await self._async_request(endpoint, payload)
-                    if attempt is None:
-                        continue
-                    self._debug_log(
-                        "Audio input screen-level success endpoint=%s response=%s",
-                        endpoint,
-                        attempt,
-                    )
-                    screen_fallback_success_endpoint = endpoint
-                    break
-
-                if screen_fallback_success_endpoint is None:
-                    self._debug_log(
-                        "Audio input screen-level fallback had no successful endpoint selected_layer_id=%s target_audio_input_id=%s",
-                        selected_layer_id,
-                        target_audio_input_id,
-                    )
-
-                is_selected_applied, selected_after_write, currently_open = await _verify_selected_open()
-                if is_selected_applied:
-                    any_layer_updated = True
-                    selected_layer_updated = True
-
-            if not is_selected_applied:
-                _LOGGER.warning(
-                    "Audio input apply failed on host=%s selected_layer_id=%s target_audio_input_id=%s selected_after_write=%s open_layers=%s screen_fallback_success_endpoint=%s",
-                    self._host,
-                    selected_layer_id,
-                    target_audio_input_id if "target_audio_input_id" in locals() else None,
-                    selected_after_write,
-                    currently_open,
-                    screen_fallback_success_endpoint
-                    if "screen_fallback_success_endpoint" in locals()
-                    else None,
-                )
 
         self._debug_log(
             "Audio input write complete selected_layer_id=%s any_layer_updated=%s selected_layer_updated=%s selected_after_write=%s",
@@ -1334,7 +966,7 @@ class NovastarClient:
         screen_id: int = 0,
         device_id: int = 0,
     ) -> bool:
-        """Set active audio output with endpoint fallbacks."""
+        """Set active audio output."""
         payload_base = {
             "screenId": int(screen_id),
             "deviceId": int(device_id),
@@ -1347,40 +979,16 @@ class NovastarClient:
                 merged_audio_payload = dict(audio_data)
                 merged_audio_payload["outputChannelMode"] = int(output_id)
 
-        candidates = [
-            (
-                "screen/writeDetail",
-                {
-                    **payload_base,
-                    "audio": merged_audio_payload,
-                },
-            )
-            if merged_audio_payload is not None
-            else None,
-            ("audio/writeOutput", {**payload_base, "audioOutputId": int(output_id)}),
-            ("audio/writeOutput", {**payload_base, "outputId": int(output_id)}),
-            (
-                "audio/writeOutput",
-                {**payload_base, "outputChannelMode": int(output_id)},
-            ),
-            ("screen/writeAudioOutput", {**payload_base, "outputId": int(output_id)}),
-            (
-                "screen/writeAudioOutput",
-                {**payload_base, "outputChannelMode": int(output_id)},
-            ),
-            (
-                "screen/writeDetail",
-                {
-                    **payload_base,
-                    "audio": {
-                        "outputChannelMode": int(output_id),
-                    },
-                },
-            ),
-            ("audio/write", {**payload_base, "audioOutputId": int(output_id)}),
-        ]
-        valid_candidates = [c for c in candidates if c is not None]
-        result = await self._async_request_first_success(valid_candidates)
+        if merged_audio_payload is None:
+            merged_audio_payload = {"outputChannelMode": int(output_id)}
+
+        result = await self._async_request(
+            "screen/writeDetail",
+            {
+                **payload_base,
+                "audio": merged_audio_payload,
+            },
+        )
         return result is not None
 
     async def async_set_audio_volume(
@@ -1389,7 +997,7 @@ class NovastarClient:
         screen_id: int = 0,
         device_id: int = 0,
     ) -> bool:
-        """Set audio volume with endpoint fallbacks."""
+        """Set audio volume."""
         clamped_volume = max(0, min(100, int(volume)))
         payload_base = {
             "screenId": int(screen_id),
@@ -1404,32 +1012,19 @@ class NovastarClient:
                 merged_audio_payload["volume"] = clamped_volume
                 merged_audio_payload["outputVolume"] = clamped_volume
 
-        candidates = [
-            (
-                "screen/writeDetail",
-                {
-                    **payload_base,
-                    "audio": merged_audio_payload,
-                },
-            )
-            if merged_audio_payload is not None
-            else None,
-            ("audio/writeVolume", {**payload_base, "volume": clamped_volume}),
-            ("screen/writeVolume", {**payload_base, "volume": clamped_volume}),
-            (
-                "screen/writeDetail",
-                {
-                    **payload_base,
-                    "audio": {
-                        "volume": clamped_volume,
-                        "outputVolume": clamped_volume,
-                    },
-                },
-            ),
-            ("audio/write", {**payload_base, "volume": clamped_volume}),
-        ]
-        valid_candidates = [c for c in candidates if c is not None]
-        result = await self._async_request_first_success(valid_candidates)
+        if merged_audio_payload is None:
+            merged_audio_payload = {
+                "volume": clamped_volume,
+                "outputVolume": clamped_volume,
+            }
+
+        result = await self._async_request(
+            "screen/writeDetail",
+            {
+                **payload_base,
+                "audio": merged_audio_payload,
+            },
+        )
         return result is not None
 
     async def async_get_background_list(
