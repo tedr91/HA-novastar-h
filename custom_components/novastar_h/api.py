@@ -772,7 +772,7 @@ class NovastarClient:
             screen_id=int(screen_id),
         )
 
-        audio_layers: list[tuple[int, dict[str, Any]]] = []
+        audio_layers: list[dict[str, Any]] = []
         for layer in layer_items:
             if not isinstance(layer, dict):
                 continue
@@ -784,7 +784,7 @@ class NovastarClient:
                 continue
             if self._coerce_audio_id(audio_status.get("isAvailable")) != 1:
                 continue
-            audio_layers.append((layer_id, audio_status))
+            audio_layers.append(layer)
 
         self._debug_log(
             "Audio input set request host=%s screen_id=%s device_id=%s selected_layer_id=%s available_audio_layers=%s",
@@ -792,25 +792,33 @@ class NovastarClient:
             int(screen_id),
             int(device_id),
             selected_layer_id,
-            [layer_id for layer_id, _ in audio_layers],
+            [self._coerce_audio_id(layer.get("layerId")) for layer in audio_layers],
         )
 
         if not audio_layers:
             self._debug_log("Audio input set aborted: no layers with audioStatus.isAvailable == 1")
             return False
 
-        if not any(layer_id == selected_layer_id for layer_id, _ in audio_layers):
+        if not any(
+            self._coerce_audio_id(layer.get("layerId")) == selected_layer_id
+            for layer in audio_layers
+        ):
             self._debug_log(
                 "Audio input set aborted: selected layer_id=%s not in available_audio_layers=%s",
                 selected_layer_id,
-                [layer_id for layer_id, _ in audio_layers],
+                [self._coerce_audio_id(layer.get("layerId")) for layer in audio_layers],
             )
             return False
 
         any_layer_updated = False
         selected_layer_updated = False
 
-        for layer_id, current_audio_status in audio_layers:
+        for layer in audio_layers:
+            layer_id = self._coerce_audio_id(layer.get("layerId"))
+            current_audio_status = layer.get("audioStatus")
+            if layer_id is None or not isinstance(current_audio_status, dict):
+                continue
+
             should_open = 1 if layer_id == selected_layer_id else 0
 
             desired_audio_status = dict(current_audio_status)
@@ -822,31 +830,50 @@ class NovastarClient:
                 "layerId": int(layer_id),
             }
 
+            general_data: dict[str, Any] | None = None
+            layer_detail = await self.async_get_layer_detail(
+                layer_id=int(layer_id),
+                device_id=int(device_id),
+                screen_id=int(screen_id),
+            )
+            if isinstance(layer_detail, dict) and isinstance(layer_detail.get("general"), dict):
+                general_data = dict(layer_detail["general"])
+            elif isinstance(layer.get("general"), dict):
+                general_data = dict(layer["general"])
+
+            if general_data is None:
+                self._debug_log(
+                    "Audio input write skipped layer_id=%s: missing general data for layer/writeGeneral",
+                    layer_id,
+                )
+                continue
+
+            write_general_payload = {
+                **payload_base,
+                "name": general_data.get("name")
+                if isinstance(general_data.get("name"), str) and general_data.get("name").strip()
+                else f"Layer {layer_id}",
+                "sizeType": int(general_data.get("sizeType", 0)),
+                "type": int(general_data.get("type", 0)),
+                "zorder": int(general_data.get("zorder", 0)),
+                "isBackground": bool(general_data.get("isBackground", False)),
+                "isFreeze": bool(general_data.get("isFreeze", False)),
+                "flipType": int(general_data.get("flipType", 0)),
+                "audioStatus": desired_audio_status,
+            }
+
+            optional_lock = self._coerce_audio_id(general_data.get("lock"))
+            if optional_lock is not None:
+                write_general_payload["lock"] = optional_lock
+
+            reverse_control = layer_detail.get("reverseControl") if isinstance(layer_detail, dict) else None
+            if isinstance(reverse_control, dict):
+                write_general_payload["reverseControl"] = reverse_control
+
             candidates = [
                 (
                     "layer/writeGeneral",
-                    {
-                        **payload_base,
-                        "general": {
-                            "audioStatus": desired_audio_status,
-                        },
-                    },
-                ),
-                (
-                    "layer/writeGeneral",
-                    {
-                        **payload_base,
-                        "general": {
-                            "isOpen": should_open,
-                        },
-                    },
-                ),
-                (
-                    "layer/writeGeneral",
-                    {
-                        **payload_base,
-                        "audioStatus": desired_audio_status,
-                    },
+                    write_general_payload,
                 ),
             ]
 
