@@ -573,13 +573,19 @@ class NovastarClient:
 
         if isinstance(detail_data, dict):
             result["input_id"] = self._coerce_audio_id(
-                detail_data.get("audioInputId", detail_data.get("inputId"))
+                detail_data.get(
+                    "audioInputId",
+                    detail_data.get("inputId", detail_data.get("inputChannelMode")),
+                )
             )
             result["output_id"] = self._coerce_audio_id(
-                detail_data.get("audioOutputId", detail_data.get("outputId"))
+                detail_data.get(
+                    "audioOutputId",
+                    detail_data.get("outputId", detail_data.get("outputChannelMode")),
+                )
             )
 
-            volume = detail_data.get("volume")
+            volume = detail_data.get("volume", detail_data.get("outputVolume"))
             if isinstance(volume, (int, float)):
                 result["volume"] = max(0, min(100, int(volume)))
 
@@ -610,11 +616,50 @@ class NovastarClient:
         if isinstance(screen_detail_data, dict):
             audio_data = screen_detail_data.get("audio")
             if isinstance(audio_data, dict):
+                input_channel_mode = self._coerce_audio_id(
+                    audio_data.get("inputChannelMode")
+                )
+                if input_channel_mode is not None:
+                    result["input_id"] = input_channel_mode
+
                 output_channel_mode = self._coerce_audio_id(
                     audio_data.get("outputChannelMode")
                 )
                 if output_channel_mode is not None:
                     result["output_id"] = output_channel_mode
+
+                audio_volume = audio_data.get("volume", audio_data.get("outputVolume"))
+                if isinstance(audio_volume, (int, float)):
+                    result["volume"] = max(0, min(100, int(audio_volume)))
+
+                audio_muted = audio_data.get("mute", audio_data.get("muted"))
+                if isinstance(audio_muted, bool):
+                    result["muted"] = audio_muted
+                elif isinstance(audio_muted, (int, float)):
+                    result["muted"] = bool(int(audio_muted))
+
+                if not result["inputs"]:
+                    audio_inputs = audio_data.get("inputs")
+                    if isinstance(audio_inputs, list):
+                        result["inputs"] = self._normalize_audio_options(
+                            audio_inputs,
+                            ("audioInputId", "inputId", "inputChannelMode", "id"),
+                            "Audio Input",
+                        )
+
+                if not result["outputs"]:
+                    audio_outputs = audio_data.get("outputs")
+                    if isinstance(audio_outputs, list):
+                        result["outputs"] = self._normalize_audio_options(
+                            audio_outputs,
+                            (
+                                "audioOutputId",
+                                "outputId",
+                                "outputChannelMode",
+                                "id",
+                            ),
+                            "Audio Output",
+                        )
 
         return result
 
@@ -632,7 +677,24 @@ class NovastarClient:
         candidates = [
             ("audio/writeInput", {**payload_base, "audioInputId": int(input_id)}),
             ("audio/writeInput", {**payload_base, "inputId": int(input_id)}),
+            (
+                "audio/writeInput",
+                {**payload_base, "inputChannelMode": int(input_id)},
+            ),
             ("screen/writeAudioInput", {**payload_base, "inputId": int(input_id)}),
+            (
+                "screen/writeAudioInput",
+                {**payload_base, "inputChannelMode": int(input_id)},
+            ),
+            (
+                "screen/writeDetail",
+                {
+                    **payload_base,
+                    "audio": {
+                        "inputChannelMode": int(input_id),
+                    },
+                },
+            ),
             ("audio/write", {**payload_base, "audioInputId": int(input_id)}),
         ]
         result = await self._async_request_first_success(candidates)
@@ -652,7 +714,24 @@ class NovastarClient:
         candidates = [
             ("audio/writeOutput", {**payload_base, "audioOutputId": int(output_id)}),
             ("audio/writeOutput", {**payload_base, "outputId": int(output_id)}),
+            (
+                "audio/writeOutput",
+                {**payload_base, "outputChannelMode": int(output_id)},
+            ),
             ("screen/writeAudioOutput", {**payload_base, "outputId": int(output_id)}),
+            (
+                "screen/writeAudioOutput",
+                {**payload_base, "outputChannelMode": int(output_id)},
+            ),
+            (
+                "screen/writeDetail",
+                {
+                    **payload_base,
+                    "audio": {
+                        "outputChannelMode": int(output_id),
+                    },
+                },
+            ),
             ("audio/write", {**payload_base, "audioOutputId": int(output_id)}),
         ]
         result = await self._async_request_first_success(candidates)
@@ -673,6 +752,15 @@ class NovastarClient:
         candidates = [
             ("audio/writeVolume", {**payload_base, "volume": clamped_volume}),
             ("screen/writeVolume", {**payload_base, "volume": clamped_volume}),
+            (
+                "screen/writeDetail",
+                {
+                    **payload_base,
+                    "audio": {
+                        "volume": clamped_volume,
+                    },
+                },
+            ),
             ("audio/write", {**payload_base, "volume": clamped_volume}),
         ]
         result = await self._async_request_first_success(candidates)
