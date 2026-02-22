@@ -1131,6 +1131,26 @@ class NovastarClient:
                     currently_open,
                 )
 
+                target_audio_input_id = selected_layer_id
+                selected_source_input_id: int | None = None
+                selected_source_slot_id: int | None = None
+                selected_source_interface_type: int | None = None
+                source_layer_for_routing = retry_selected_layer or selected_layer
+                if isinstance(source_layer_for_routing, dict):
+                    source_data = source_layer_for_routing.get("source")
+                    if isinstance(source_data, dict):
+                        selected_source_input_id = self._coerce_audio_id(
+                            source_data.get("inputId")
+                        )
+                        selected_source_slot_id = self._coerce_audio_id(
+                            source_data.get("slotId")
+                        )
+                        selected_source_interface_type = self._coerce_audio_id(
+                            source_data.get("interfaceType")
+                        )
+                        if selected_source_input_id is not None:
+                            target_audio_input_id = selected_source_input_id
+
                 payload_base = {
                     "screenId": int(screen_id),
                     "deviceId": int(device_id),
@@ -1141,9 +1161,18 @@ class NovastarClient:
                     audio_data = screen_detail_data.get("audio")
                     if isinstance(audio_data, dict):
                         merged_audio_payload = dict(audio_data)
-                        merged_audio_payload["inputChannelMode"] = selected_layer_id
-                        merged_audio_payload["inputId"] = selected_layer_id
-                        merged_audio_payload["audioInputId"] = selected_layer_id
+                        merged_audio_payload["inputChannelMode"] = target_audio_input_id
+                        merged_audio_payload["inputId"] = target_audio_input_id
+                        merged_audio_payload["audioInputId"] = target_audio_input_id
+
+                audio_write_input_payload = {
+                    **payload_base,
+                    "inputId": target_audio_input_id,
+                }
+                if selected_source_slot_id is not None:
+                    audio_write_input_payload["slotId"] = selected_source_slot_id
+                if selected_source_interface_type is not None:
+                    audio_write_input_payload["interfaceType"] = selected_source_interface_type
 
                 screen_audio_candidates = [
                     (
@@ -1155,25 +1184,29 @@ class NovastarClient:
                     )
                     if merged_audio_payload is not None
                     else None,
-                    ("audio/writeInput", {**payload_base, "audioInputId": selected_layer_id}),
-                    ("audio/writeInput", {**payload_base, "inputId": selected_layer_id}),
+                    ("audio/writeInput", {**payload_base, "audioInputId": target_audio_input_id}),
+                    ("audio/writeInput", audio_write_input_payload),
                     (
                         "audio/writeInput",
-                        {**payload_base, "inputChannelMode": selected_layer_id},
+                        {**payload_base, "inputChannelMode": target_audio_input_id},
                     ),
                     (
                         "screen/writeAudioInput",
-                        {**payload_base, "inputId": selected_layer_id},
+                        {**payload_base, "inputId": target_audio_input_id},
                     ),
                     (
                         "screen/writeAudioInput",
-                        {**payload_base, "inputChannelMode": selected_layer_id},
+                        {**payload_base, "inputChannelMode": target_audio_input_id},
                     ),
                 ]
 
                 self._debug_log(
-                    "Audio input screen-level fallback start selected_layer_id=%s",
+                    "Audio input screen-level fallback start selected_layer_id=%s target_audio_input_id=%s source_input_id=%s source_slot_id=%s source_interface_type=%s",
                     selected_layer_id,
+                    target_audio_input_id,
+                    selected_source_input_id,
+                    selected_source_slot_id,
+                    selected_source_interface_type,
                 )
                 for candidate in [c for c in screen_audio_candidates if c is not None]:
                     endpoint, payload = candidate
@@ -1199,9 +1232,10 @@ class NovastarClient:
 
             if not is_selected_applied:
                 _LOGGER.warning(
-                    "Audio input apply failed on host=%s selected_layer_id=%s selected_after_write=%s open_layers=%s",
+                    "Audio input apply failed on host=%s selected_layer_id=%s target_audio_input_id=%s selected_after_write=%s open_layers=%s",
                     self._host,
                     selected_layer_id,
+                    target_audio_input_id if "target_audio_input_id" in locals() else None,
                     selected_after_write,
                     currently_open,
                 )
