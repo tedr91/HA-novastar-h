@@ -528,6 +528,7 @@ class NovastarClient:
     ) -> dict[str, Any]:
         """Get audio routes and level with endpoint fallbacks."""
         payload = {"screenId": screen_id, "deviceId": device_id}
+        screen_detail_data = await self._async_request("screen/readDetail", payload)
         detail_data = await self._async_request_first_success(
             [
                 ("audio/readDetail", payload),
@@ -605,6 +606,15 @@ class NovastarClient:
                         ("audioOutputId", "outputId", "id"),
                         "Audio Output",
                     )
+
+        if isinstance(screen_detail_data, dict):
+            audio_data = screen_detail_data.get("audio")
+            if isinstance(audio_data, dict):
+                output_channel_mode = self._coerce_audio_id(
+                    audio_data.get("outputChannelMode")
+                )
+                if output_channel_mode is not None:
+                    result["output_id"] = output_channel_mode
 
         return result
 
@@ -945,7 +955,7 @@ class NovastarClient:
         payload = {
             "screenId": int(screen_id),
             "deviceId": int(device_id),
-            "enable": 0 if enabled else 1,
+            "enable": 1 if enabled else 0,
             "bkgId": max(0, int(background_id)),
         }
         data = await self._async_request("screen/writeBKG", payload)
