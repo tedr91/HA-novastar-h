@@ -1025,6 +1025,13 @@ class NovastarClient:
                     selected_after_write,
                     currently_open,
                 )
+                _LOGGER.warning(
+                    "Audio input apply failed on host=%s selected_layer_id=%s selected_after_write=%s open_layers=%s",
+                    self._host,
+                    selected_layer_id,
+                    selected_after_write,
+                    currently_open,
+                )
 
         self._debug_log(
             "Audio input write complete selected_layer_id=%s any_layer_updated=%s selected_layer_updated=%s selected_after_write=%s",
