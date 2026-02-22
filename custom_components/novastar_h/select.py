@@ -37,15 +37,10 @@ def _input_label(input_data: dict[str, Any]) -> str:
     input_id = _coerce_int(input_data.get("inputId"))
     base_name = input_data.get("name") or input_data.get("defaultName")
     if isinstance(base_name, str) and base_name.strip():
-        cleaned_name = base_name.strip()
+        return base_name.strip()
     elif input_id is not None:
-        cleaned_name = f"Input {input_id}"
-    else:
-        cleaned_name = "Input"
-
-    if input_id is not None:
-        return f"{cleaned_name} ({input_id})"
-    return cleaned_name
+        return f"Input {input_id}"
+    return "Input"
 
 
 def _layer_source_type(layer: dict[str, Any]) -> int:
@@ -177,24 +172,14 @@ class NovastarPresetSelect(CoordinatorEntity[NovastarCoordinator], SelectEntity)
         for preset in presets:
             preset_name = preset.name or f"Preset {preset.preset_id}"
             if preset_name == option:
-                await self.coordinator.client.async_load_preset(
-                    preset_id=preset.preset_id,
-                    screen_id=self.coordinator.screen_id,
-                    device_id=self.coordinator.device_id,
-                )
-                await self.coordinator.async_request_refresh()
+                await self.coordinator.async_set_active_preset(preset.preset_id)
                 return
 
         # Fallback: try parsing preset number from option
         if option.startswith("Preset "):
             try:
                 preset_num = int(option.replace("Preset ", ""))
-                await self.coordinator.client.async_load_preset(
-                    preset_id=preset_num,
-                    screen_id=self.coordinator.screen_id,
-                    device_id=self.coordinator.device_id,
-                )
-                await self.coordinator.async_request_refresh()
+                await self.coordinator.async_set_active_preset(preset_num)
             except ValueError:
                 pass
 

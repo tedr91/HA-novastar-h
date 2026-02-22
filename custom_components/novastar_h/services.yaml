@@ -80,3 +80,24 @@ set_layer_source:
         number:
           min: 0
           mode: box
+
+set_active_preset:
+  name: Set Active Preset
+  description: Set the active preset on a Novastar processor.
+  fields:
+    host:
+      name: Host
+      description: The IP address of the Novastar processor.
+      required: true
+      example: "192.168.1.100"
+      selector:
+        text:
+    preset_id:
+      name: Preset ID
+      description: Preset ID to activate.
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 0
+          mode: box

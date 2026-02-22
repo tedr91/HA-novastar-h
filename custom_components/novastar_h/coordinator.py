@@ -114,6 +114,17 @@ class NovastarCoordinator(DataUpdateCoordinator[NovastarState]):
             await self.async_request_refresh()
         return result
 
+    async def async_set_active_preset(self, preset_id: int) -> bool:
+        """Set active preset and refresh state."""
+        result = await self._client.async_load_preset(
+            preset_id=preset_id,
+            screen_id=self._screen_id,
+            device_id=self._device_id,
+        )
+        if result:
+            await self.async_request_refresh()
+        return result
+
     async def async_set_background_enabled(self, enabled: bool) -> bool:
         """Enable or disable current selected background."""
         result = await self._client.async_set_background(

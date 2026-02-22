@@ -32,6 +32,7 @@ _LOGGER = logging.getLogger(__name__)
 
 SERVICE_SEND_RAW_COMMAND = "send_raw_command"
 SERVICE_SET_LAYER_SOURCE = "set_layer_source"
+SERVICE_SET_ACTIVE_PRESET = "set_active_preset"
 ATTR_ENDPOINT = "endpoint"
 ATTR_BODY = "body"
 ATTR_LAYER_ID = "layer_id"
@@ -39,6 +40,7 @@ ATTR_INPUT_ID = "input_id"
 ATTR_INTERFACE_TYPE = "interface_type"
 ATTR_SLOT_ID = "slot_id"
 ATTR_CROP_ID = "crop_id"
+ATTR_PRESET_ID = "preset_id"
 
 SERVICE_SEND_RAW_COMMAND_SCHEMA = vol.Schema(
     {
@@ -56,6 +58,13 @@ SERVICE_SET_LAYER_SOURCE_SCHEMA = vol.Schema(
         vol.Optional(ATTR_INTERFACE_TYPE, default=0): vol.Coerce(int),
         vol.Optional(ATTR_SLOT_ID, default=0): vol.Coerce(int),
         vol.Optional(ATTR_CROP_ID, default=255): vol.Coerce(int),
+    }
+)
+
+SERVICE_SET_ACTIVE_PRESET_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_HOST): cv.string,
+        vol.Required(ATTR_PRESET_ID): vol.Coerce(int),
     }
 )
 
@@ -182,6 +191,38 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             schema=SERVICE_SET_LAYER_SOURCE_SCHEMA,
         )
 
+    if not hass.services.has_service(DOMAIN, SERVICE_SET_ACTIVE_PRESET):
+        async def async_set_active_preset(call: ServiceCall) -> None:
+            """Handle set_active_preset service call."""
+            host = call.data[CONF_HOST]
+            preset_id = call.data[ATTR_PRESET_ID]
+
+            coordinator_found: NovastarCoordinator | None = None
+            for data in hass.data[DOMAIN].values():
+                if isinstance(data, dict) and "client" in data and "coordinator" in data:
+                    if data["client"].host == host:
+                        coordinator_found = data["coordinator"]
+                        break
+
+            if coordinator_found is None:
+                _LOGGER.error("No Novastar device found at %s", host)
+                return
+
+            result = await coordinator_found.async_set_active_preset(preset_id)
+            if not result:
+                _LOGGER.warning(
+                    "Failed to set active preset for host=%s preset_id=%s",
+                    host,
+                    preset_id,
+                )
+
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_SET_ACTIVE_PRESET,
+            async_set_active_preset,
+            schema=SERVICE_SET_ACTIVE_PRESET_SCHEMA,
+        )
+
     loaded_platforms: list[Any] = []
     for platform in PLATFORMS:
         try:
@@ -238,6 +279,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN, SERVICE_SET_LAYER_SOURCE
         ):
             hass.services.async_remove(DOMAIN, SERVICE_SET_LAYER_SOURCE)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_SET_ACTIVE_PRESET
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_SET_ACTIVE_PRESET)
     return unloaded
 
 

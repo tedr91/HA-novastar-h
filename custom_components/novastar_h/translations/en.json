@@ -202,6 +202,20 @@
           "description": "Crop ID. Use 255 for original source."
         }
       }
+    },
+    "set_active_preset": {
+      "name": "Set Active Preset",
+      "description": "Set the active preset on a Novastar processor.",
+      "fields": {
+        "host": {
+          "name": "Host",
+          "description": "The IP address of the Novastar processor."
+        },
+        "preset_id": {
+          "name": "Preset ID",
+          "description": "Preset ID to activate."
+        }
+      }
     }
   }
 }
