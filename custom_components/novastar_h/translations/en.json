@@ -121,6 +121,12 @@
       "background": {
         "name": "Background"
       },
+      "audio_input": {
+        "name": "Audio Input"
+      },
+      "audio_output": {
+        "name": "Audio Output"
+      },
       "layer_source": {
         "name": "Layer Source"
       }
@@ -128,6 +134,9 @@
     "number": {
       "brightness": {
         "name": "Brightness"
+      },
+      "audio_volume": {
+        "name": "Audio Volume"
       }
     },
     "sensor": {

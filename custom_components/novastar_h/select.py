@@ -93,6 +93,8 @@ async def async_setup_entry(
 
     entities: list[SelectEntity] = [NovastarPresetSelect(entry, coordinator, device_info)]
     entities.append(NovastarBackgroundSelect(entry, coordinator, device_info))
+    entities.append(NovastarAudioInputSelect(entry, coordinator, device_info))
+    entities.append(NovastarAudioOutputSelect(entry, coordinator, device_info))
     entities.extend(
         [
             NovastarLayerSourceSelect(entry, coordinator, device_info, layer_id)
@@ -417,3 +419,176 @@ class NovastarBackgroundSelect(CoordinatorEntity[NovastarCoordinator], SelectEnt
             return
 
         await self.coordinator.async_set_background(background_id=bkg_id, enabled=True)
+
+
+class _NovastarBaseAudioSelect(CoordinatorEntity[NovastarCoordinator], SelectEntity):
+    """Base select for audio route entities."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: NovastarCoordinator,
+        device_info: NovastarDeviceInfo,
+    ) -> None:
+        """Initialize audio select base."""
+        super().__init__(coordinator)
+        self._entry = entry
+        self._device_info = device_info
+
+    @property
+    def device_info(self):
+        """Return device info."""
+        model = "H Series"
+        if self._device_info.model_id:
+            model = f"H Series (Model {self._device_info.model_id})"
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "manufacturer": "Novastar",
+            "model": model,
+            "name": self._entry.data.get(CONF_NAME, DEFAULT_NAME),
+            "sw_version": self._device_info.firmware,
+            "serial_number": self._device_info.serial,
+        }
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.last_update_success
+
+
+class NovastarAudioInputSelect(_NovastarBaseAudioSelect):
+    """Select entity for active audio input."""
+
+    _attr_name = "Audio Input"
+    _attr_translation_key = "audio_input"
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: NovastarCoordinator,
+        device_info: NovastarDeviceInfo,
+    ) -> None:
+        """Initialize audio input select."""
+        super().__init__(entry, coordinator, device_info)
+        self._attr_unique_id = f"{entry.entry_id}_audio_input"
+
+    def _audio_input_map(self) -> dict[str, int]:
+        """Map audio input option label to id."""
+        if not self.coordinator.data:
+            return {}
+
+        mapped: dict[str, int] = {}
+        for input_data in self.coordinator.data.audio_inputs:
+            input_id = _coerce_int(input_data.get("id"))
+            if input_id is None:
+                continue
+            mapped[_input_label(input_data)] = input_id
+        return dict(sorted(mapped.items(), key=lambda item: item[0]))
+
+    @property
+    def options(self) -> list[str]:
+        """Return available audio input options."""
+        options = list(self._audio_input_map().keys())
+        current = self.current_option
+        if current and current not in options:
+            options.append(current)
+        return options or ["Audio Input 0"]
+
+    @property
+    def current_option(self) -> str | None:
+        """Return selected audio input option."""
+        if not self.coordinator.data:
+            return None
+        current_id = _coerce_int(self.coordinator.data.audio_input_id)
+        if current_id is None:
+            return None
+
+        for label, option_id in self._audio_input_map().items():
+            if option_id == current_id:
+                return label
+        return f"Audio Input {current_id}"
+
+    async def async_select_option(self, option: str) -> None:
+        """Set active audio input."""
+        input_id = self._audio_input_map().get(option)
+        if input_id is None:
+            text = option.strip()
+            if text.startswith("Audio Input "):
+                try:
+                    input_id = int(text.replace("Audio Input ", "").strip())
+                except ValueError:
+                    return
+        if input_id is None:
+            return
+        await self.coordinator.async_set_audio_input(input_id)
+
+
+class NovastarAudioOutputSelect(_NovastarBaseAudioSelect):
+    """Select entity for active audio output."""
+
+    _attr_name = "Audio Output"
+    _attr_translation_key = "audio_output"
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: NovastarCoordinator,
+        device_info: NovastarDeviceInfo,
+    ) -> None:
+        """Initialize audio output select."""
+        super().__init__(entry, coordinator, device_info)
+        self._attr_unique_id = f"{entry.entry_id}_audio_output"
+
+    def _audio_output_map(self) -> dict[str, int]:
+        """Map audio output option label to id."""
+        if not self.coordinator.data:
+            return {}
+
+        mapped: dict[str, int] = {}
+        for output_data in self.coordinator.data.audio_outputs:
+            output_id = _coerce_int(output_data.get("id"))
+            if output_id is None:
+                continue
+            label = output_data.get("name") or f"Audio Output {output_id}"
+            if isinstance(label, str):
+                mapped[label.strip() or f"Audio Output {output_id}"] = output_id
+        return dict(sorted(mapped.items(), key=lambda item: item[0]))
+
+    @property
+    def options(self) -> list[str]:
+        """Return available audio output options."""
+        options = list(self._audio_output_map().keys())
+        current = self.current_option
+        if current and current not in options:
+            options.append(current)
+        return options or ["Audio Output 0"]
+
+    @property
+    def current_option(self) -> str | None:
+        """Return selected audio output option."""
+        if not self.coordinator.data:
+            return None
+        current_id = _coerce_int(self.coordinator.data.audio_output_id)
+        if current_id is None:
+            return None
+
+        for label, option_id in self._audio_output_map().items():
+            if option_id == current_id:
+                return label
+        return f"Audio Output {current_id}"
+
+    async def async_select_option(self, option: str) -> None:
+        """Set active audio output."""
+        output_id = self._audio_output_map().get(option)
+        if output_id is None:
+            text = option.strip()
+            if text.startswith("Audio Output "):
+                try:
+                    output_id = int(text.replace("Audio Output ", "").strip())
+                except ValueError:
+                    return
+        if output_id is None:
+            return
+        await self.coordinator.async_set_audio_output(output_id)

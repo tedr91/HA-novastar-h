@@ -160,6 +160,45 @@ class NovastarCoordinator(DataUpdateCoordinator[NovastarState]):
             await self.async_request_refresh()
         return result
 
+    async def async_set_audio_input(self, input_id: int) -> bool:
+        """Set active audio input and refresh state."""
+        result = await self._client.async_set_audio_input(
+            input_id=input_id,
+            screen_id=self._screen_id,
+            device_id=self._device_id,
+        )
+        if result and self.data:
+            self.data.audio_input_id = int(input_id)
+            self.async_set_updated_data(self.data)
+            await self.async_request_refresh()
+        return result
+
+    async def async_set_audio_output(self, output_id: int) -> bool:
+        """Set active audio output and refresh state."""
+        result = await self._client.async_set_audio_output(
+            output_id=output_id,
+            screen_id=self._screen_id,
+            device_id=self._device_id,
+        )
+        if result and self.data:
+            self.data.audio_output_id = int(output_id)
+            self.async_set_updated_data(self.data)
+            await self.async_request_refresh()
+        return result
+
+    async def async_set_audio_volume(self, volume: int) -> bool:
+        """Set audio volume and refresh state."""
+        result = await self._client.async_set_audio_volume(
+            volume=volume,
+            screen_id=self._screen_id,
+            device_id=self._device_id,
+        )
+        if result and self.data:
+            self.data.audio_volume = max(0, min(100, int(volume)))
+            self.async_set_updated_data(self.data)
+            await self.async_request_refresh()
+        return result
+
     async def _async_update_data(self) -> NovastarState:
         """Fetch data from the device."""
         state = await self._client.async_get_state(self._screen_id, self._device_id)

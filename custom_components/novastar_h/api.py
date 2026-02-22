@@ -68,6 +68,12 @@ class NovastarState:
     inputs: list[dict[str, Any]] = field(default_factory=list)
     layers: list[dict[str, Any]] = field(default_factory=list)
     backgrounds: list[dict[str, Any]] = field(default_factory=list)
+    audio_inputs: list[dict[str, Any]] = field(default_factory=list)
+    audio_outputs: list[dict[str, Any]] = field(default_factory=list)
+    audio_input_id: int | None = None
+    audio_output_id: int | None = None
+    audio_volume: int | None = None
+    audio_muted: bool | None = None
 
 
 class NovastarClient:
@@ -251,6 +257,17 @@ class NovastarClient:
         except Exception as ex:
             _LOGGER.debug("Request to %s failed: %s", endpoint, ex, exc_info=True)
             return None
+
+    async def _async_request_first_success(
+        self,
+        candidates: list[tuple[str, dict[str, Any]]],
+    ) -> Any | None:
+        """Try multiple endpoint/payload candidates and return first successful response."""
+        for endpoint, payload in candidates:
+            result = await self._async_request(endpoint, payload)
+            if result is not None:
+                return result
+        return None
 
     async def async_can_connect(self) -> bool:
         """Test if we can connect to the device."""
@@ -440,8 +457,216 @@ class NovastarClient:
         state.inputs = await self.async_get_inputs_with_details(device_id)
         state.layers = await self.async_get_layers_with_details(device_id, screen_id)
         state.backgrounds = await self.async_get_background_list(device_id)
+        audio_state = await self.async_get_audio_state(screen_id, device_id)
+        state.audio_inputs = audio_state.get("inputs", [])
+        state.audio_outputs = audio_state.get("outputs", [])
+        state.audio_input_id = audio_state.get("input_id")
+        state.audio_output_id = audio_state.get("output_id")
+        state.audio_volume = audio_state.get("volume")
+        state.audio_muted = audio_state.get("muted")
 
         return state
+
+    def _audio_option_label(self, option_data: dict[str, Any], fallback_prefix: str) -> str:
+        """Build a stable label for audio input/output options."""
+        name = option_data.get("name") or option_data.get("defaultName")
+        if isinstance(name, str) and name.strip():
+            return name.strip()
+
+        option_id = option_data.get("id")
+        if isinstance(option_id, int):
+            return f"{fallback_prefix} {option_id}"
+        return fallback_prefix
+
+    def _normalize_audio_options(
+        self,
+        raw_items: list[Any],
+        id_keys: tuple[str, ...],
+        fallback_prefix: str,
+    ) -> list[dict[str, Any]]:
+        """Normalize raw list payloads into id/name objects."""
+        normalized: list[dict[str, Any]] = []
+        for item in raw_items:
+            if not isinstance(item, dict):
+                continue
+
+            option_id: int | None = None
+            for key in id_keys:
+                value = item.get(key)
+                if isinstance(value, int):
+                    option_id = value
+                    break
+
+            if option_id is None:
+                continue
+
+            normalized_item = {
+                "id": option_id,
+                "name": self._audio_option_label(item, fallback_prefix),
+            }
+            normalized.append(normalized_item)
+
+        normalized.sort(key=lambda entry: entry["id"])
+        return normalized
+
+    def _coerce_audio_id(self, value: Any) -> int | None:
+        """Convert supported values to integer audio id."""
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return None
+
+    async def async_get_audio_state(
+        self,
+        screen_id: int = 0,
+        device_id: int = 0,
+    ) -> dict[str, Any]:
+        """Get audio routes and level with endpoint fallbacks."""
+        payload = {"screenId": screen_id, "deviceId": device_id}
+        detail_data = await self._async_request_first_success(
+            [
+                ("audio/readDetail", payload),
+                ("screen/readAudio", payload),
+                ("audio/read", payload),
+            ]
+        )
+
+        list_data = await self._async_request_first_success(
+            [
+                ("audio/readList", payload),
+                ("audio/readAllList", {"deviceId": device_id}),
+                ("screen/readAudioList", payload),
+            ]
+        )
+
+        result: dict[str, Any] = {
+            "inputs": [],
+            "outputs": [],
+            "input_id": None,
+            "output_id": None,
+            "volume": None,
+            "muted": None,
+        }
+
+        if isinstance(list_data, dict):
+            raw_inputs = list_data.get("inputs")
+            if isinstance(raw_inputs, list):
+                result["inputs"] = self._normalize_audio_options(
+                    raw_inputs,
+                    ("audioInputId", "inputId", "id"),
+                    "Audio Input",
+                )
+
+            raw_outputs = list_data.get("outputs")
+            if isinstance(raw_outputs, list):
+                result["outputs"] = self._normalize_audio_options(
+                    raw_outputs,
+                    ("audioOutputId", "outputId", "id"),
+                    "Audio Output",
+                )
+
+        if isinstance(detail_data, dict):
+            result["input_id"] = self._coerce_audio_id(
+                detail_data.get("audioInputId", detail_data.get("inputId"))
+            )
+            result["output_id"] = self._coerce_audio_id(
+                detail_data.get("audioOutputId", detail_data.get("outputId"))
+            )
+
+            volume = detail_data.get("volume")
+            if isinstance(volume, (int, float)):
+                result["volume"] = max(0, min(100, int(volume)))
+
+            muted = detail_data.get("mute", detail_data.get("muted"))
+            if isinstance(muted, bool):
+                result["muted"] = muted
+            elif isinstance(muted, (int, float)):
+                result["muted"] = bool(int(muted))
+
+            if not result["inputs"]:
+                raw_inputs = detail_data.get("inputs")
+                if isinstance(raw_inputs, list):
+                    result["inputs"] = self._normalize_audio_options(
+                        raw_inputs,
+                        ("audioInputId", "inputId", "id"),
+                        "Audio Input",
+                    )
+
+            if not result["outputs"]:
+                raw_outputs = detail_data.get("outputs")
+                if isinstance(raw_outputs, list):
+                    result["outputs"] = self._normalize_audio_options(
+                        raw_outputs,
+                        ("audioOutputId", "outputId", "id"),
+                        "Audio Output",
+                    )
+
+        return result
+
+    async def async_set_audio_input(
+        self,
+        input_id: int,
+        screen_id: int = 0,
+        device_id: int = 0,
+    ) -> bool:
+        """Set active audio input with endpoint fallbacks."""
+        payload_base = {
+            "screenId": int(screen_id),
+            "deviceId": int(device_id),
+        }
+        candidates = [
+            ("audio/writeInput", {**payload_base, "audioInputId": int(input_id)}),
+            ("audio/writeInput", {**payload_base, "inputId": int(input_id)}),
+            ("screen/writeAudioInput", {**payload_base, "inputId": int(input_id)}),
+            ("audio/write", {**payload_base, "audioInputId": int(input_id)}),
+        ]
+        result = await self._async_request_first_success(candidates)
+        return result is not None
+
+    async def async_set_audio_output(
+        self,
+        output_id: int,
+        screen_id: int = 0,
+        device_id: int = 0,
+    ) -> bool:
+        """Set active audio output with endpoint fallbacks."""
+        payload_base = {
+            "screenId": int(screen_id),
+            "deviceId": int(device_id),
+        }
+        candidates = [
+            ("audio/writeOutput", {**payload_base, "audioOutputId": int(output_id)}),
+            ("audio/writeOutput", {**payload_base, "outputId": int(output_id)}),
+            ("screen/writeAudioOutput", {**payload_base, "outputId": int(output_id)}),
+            ("audio/write", {**payload_base, "audioOutputId": int(output_id)}),
+        ]
+        result = await self._async_request_first_success(candidates)
+        return result is not None
+
+    async def async_set_audio_volume(
+        self,
+        volume: int,
+        screen_id: int = 0,
+        device_id: int = 0,
+    ) -> bool:
+        """Set audio volume with endpoint fallbacks."""
+        clamped_volume = max(0, min(100, int(volume)))
+        payload_base = {
+            "screenId": int(screen_id),
+            "deviceId": int(device_id),
+        }
+        candidates = [
+            ("audio/writeVolume", {**payload_base, "volume": clamped_volume}),
+            ("screen/writeVolume", {**payload_base, "volume": clamped_volume}),
+            ("audio/write", {**payload_base, "volume": clamped_volume}),
+        ]
+        result = await self._async_request_first_success(candidates)
+        return result is not None
 
     async def async_get_background_list(
         self, device_id: int = 0
