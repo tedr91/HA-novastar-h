@@ -28,7 +28,8 @@ from .const import (
 from .discovery import DiscoveredDevice, scan_network
 
 _LOGGER = logging.getLogger(__name__)
-_OPT_LAYER_COUNT_UI = "layer_count"
+_OPT_LAYER_COUNT_UI_LEGACY = "layer_count"
+_OPT_LAYER_COUNT_UI = "Number of Layers to pre-populate for input selection"
 
 
 class NovastarConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -336,6 +337,10 @@ class NovastarOptionsFlowHandler(OptionsFlow):
             if _OPT_LAYER_COUNT_UI in options:
                 options[CONF_LAYER_SELECT_PREPOPULATE_COUNT] = options.pop(
                     _OPT_LAYER_COUNT_UI
+                )
+            if _OPT_LAYER_COUNT_UI_LEGACY in options:
+                options[CONF_LAYER_SELECT_PREPOPULATE_COUNT] = options.pop(
+                    _OPT_LAYER_COUNT_UI_LEGACY
                 )
             return self.async_create_entry(title="", data=options)
 
