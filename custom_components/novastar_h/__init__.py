@@ -46,7 +46,7 @@ ATTR_PRESET_ID = "preset_id"
 
 SERVICE_SEND_RAW_COMMAND_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HOST): cv.string,
+        vol.Optional(CONF_HOST): cv.string,
         vol.Required(ATTR_ENDPOINT): cv.string,
         vol.Required(ATTR_BODY): dict,
     }
@@ -147,31 +147,48 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.services.has_service(DOMAIN, SERVICE_SEND_RAW_COMMAND):
         async def async_send_raw_command(call: ServiceCall) -> None:
             """Handle send_raw_command service call."""
-            host = call.data[CONF_HOST]
+            host = call.data.get(CONF_HOST)
             endpoint = call.data[ATTR_ENDPOINT]
             body = call.data[ATTR_BODY]
 
-            # Find the client for the specified host
+            coordinator_found, resolved_host, error_message = resolve_coordinator_by_host(
+                host
+            )
+
+            if coordinator_found is None:
+                _LOGGER.error(error_message)
+                return
+
             client_found = None
+            raw_enabled = False
             for eid, data in hass.data[DOMAIN].items():
-                if isinstance(data, dict) and "client" in data:
-                    if data["client"].host == host:
-                        # Check if this entry allows raw commands (options first, then data)
-                        config_entry = hass.config_entries.async_get_entry(eid)
-                        if config_entry:
-                            allow_raw = config_entry.options.get(
-                                CONF_ALLOW_RAW_COMMANDS,
-                                config_entry.data.get(
-                                    CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS
-                                ),
-                            )
-                            if allow_raw:
-                                client_found = data["client"]
-                                break
+                if not isinstance(data, dict) or "client" not in data:
+                    continue
+                client = data["client"]
+                if client.host != resolved_host:
+                    continue
+                client_found = client
+
+                config_entry = hass.config_entries.async_get_entry(eid)
+                if config_entry:
+                    raw_enabled = config_entry.options.get(
+                        CONF_ALLOW_RAW_COMMANDS,
+                        config_entry.data.get(
+                            CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS
+                        ),
+                    )
+                break
 
             if not client_found:
                 _LOGGER.error(
-                    "No Novastar device found at %s with raw commands enabled", host
+                    "No Novastar device found at %s", resolved_host
+                )
+                return
+
+            if not raw_enabled:
+                _LOGGER.error(
+                    "Raw commands are not enabled for Novastar device at %s",
+                    resolved_host,
                 )
                 return
 
