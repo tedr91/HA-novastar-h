@@ -95,6 +95,7 @@ async def async_setup_entry(
     entities.append(NovastarBackgroundSelect(entry, coordinator, device_info))
     entities.append(NovastarAudioInputSelect(entry, coordinator, device_info))
     entities.append(NovastarAudioOutputSelect(entry, coordinator, device_info))
+    entities.append(NovastarAudioOutputModeSelect(entry, coordinator, device_info))
     entities.extend(
         [
             NovastarLayerSourceSelect(entry, coordinator, device_info, layer_id)
@@ -595,6 +596,72 @@ class NovastarAudioOutputSelect(_NovastarBaseAudioSelect):
             if text.startswith("Audio Output "):
                 try:
                     output_id = int(text.replace("Audio Output ", "").strip())
+                except ValueError:
+                    return
+        if output_id is None:
+            return
+        await self.coordinator.async_set_audio_output(output_id)
+
+
+class NovastarAudioOutputModeSelect(_NovastarBaseAudioSelect):
+    """Select entity for audio output mode (audioOutputMode/outputChannelMode)."""
+
+    _attr_name = "Audio Output Mode"
+    _attr_translation_key = "audio_output_mode"
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: NovastarCoordinator,
+        device_info: NovastarDeviceInfo,
+    ) -> None:
+        """Initialize audio output mode select."""
+        super().__init__(entry, coordinator, device_info)
+        self._attr_unique_id = f"{entry.entry_id}_audio_output_mode"
+
+    @staticmethod
+    def _audio_output_mode_map() -> dict[str, int]:
+        """Map documented audio output mode labels to ids."""
+        return {
+            "Embedded Mode": 0,
+            "Fixed Mode": 1,
+        }
+
+    @staticmethod
+    def _audio_output_mode_label(mode_id: int) -> str:
+        """Return display label for one audio output mode id."""
+        for label, option_id in NovastarAudioOutputModeSelect._audio_output_mode_map().items():
+            if option_id == mode_id:
+                return label
+        return f"Audio Output Mode {mode_id}"
+
+    @property
+    def options(self) -> list[str]:
+        """Return available audio output mode options."""
+        options = list(self._audio_output_mode_map().keys())
+        current = self.current_option
+        if current and current not in options:
+            options.append(current)
+        return options
+
+    @property
+    def current_option(self) -> str | None:
+        """Return selected audio output mode option."""
+        if not self.coordinator.data:
+            return None
+        current_id = _coerce_int(self.coordinator.data.audio_output_id)
+        if current_id is None:
+            return None
+        return self._audio_output_mode_label(current_id)
+
+    async def async_select_option(self, option: str) -> None:
+        """Set active audio output mode."""
+        output_id = self._audio_output_mode_map().get(option)
+        if output_id is None:
+            text = option.strip()
+            if text.startswith("Audio Output Mode "):
+                try:
+                    output_id = int(text.replace("Audio Output Mode ", "").strip())
                 except ValueError:
                     return
         if output_id is None:

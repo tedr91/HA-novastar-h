@@ -129,6 +129,9 @@
       "audio_output": {
         "name": "Audio Output"
       },
+      "audio_output_mode": {
+        "name": "Audio Output Mode"
+      },
       "layer_source": {
         "name": "Layer Source"
       }
@@ -139,9 +142,6 @@
       },
       "audio_volume": {
         "name": "Audio Volume"
-      },
-      "audio_output_mode": {
-        "name": "Audio Output Mode"
       }
     },
     "sensor": {
