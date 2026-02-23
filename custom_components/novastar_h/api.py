@@ -231,6 +231,12 @@ class NovastarClient:
         url = f"{self._base_url}/{endpoint}"
         request_data = self._build_request(body)
 
+        self._debug_log(
+            "Sending POST request to Novastar API url=%s body=%s",
+            url,
+            request_data
+        )
+
         try:
             async with aiohttp.ClientSession(timeout=self._timeout) as session:
                 async with session.post(url, json=request_data) as response:
