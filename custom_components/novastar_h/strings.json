@@ -171,11 +171,11 @@
   "services": {
     "send_raw_command": {
       "name": "Send Raw Command",
-      "description": "Send a raw API command to the Novastar processor (requires 'Allow Raw Commands' option).",
+      "description": "Send a raw API command to the Novastar processor (requires 'Allow Raw Commands' option). Host is optional when only one Novastar device is configured.",
       "fields": {
         "host": {
           "name": "Host",
-          "description": "The IP address of the Novastar processor."
+          "description": "The IP address of the Novastar processor. Required when multiple Novastar devices are configured."
         },
         "endpoint": {
           "name": "Command",

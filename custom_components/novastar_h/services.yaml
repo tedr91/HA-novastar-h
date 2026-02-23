@@ -4,7 +4,7 @@ send_raw_command:
   fields:
     host:
       name: Host
-      description: Optional IP address of the Novastar processor. Host is optional when only one Novastar device is configured.
+      description: Optional IP address of the Novastar processor. Required when multiple Novastar devices are configured.
       required: false
       example: "192.168.1.100"
       selector:
