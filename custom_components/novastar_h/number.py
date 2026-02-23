@@ -25,6 +25,7 @@ async def async_setup_entry(
         [
             NovastarBrightnessNumber(entry, coordinator, device_info),
             NovastarAudioVolumeNumber(entry, coordinator, device_info),
+            NovastarAudioOutputModeNumber(entry, coordinator, device_info),
         ]
     )
 
@@ -151,3 +152,58 @@ class NovastarAudioVolumeNumber(CoordinatorEntity[NovastarCoordinator], NumberEn
     async def async_set_native_value(self, value: float) -> None:
         """Set audio volume value."""
         await self.coordinator.async_set_audio_volume(int(value))
+
+
+class NovastarAudioOutputModeNumber(CoordinatorEntity[NovastarCoordinator], NumberEntity):
+    """Number entity for audio output mode (audioOutputMode/outputChannelMode)."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Audio Output Mode"
+    _attr_translation_key = "audio_output_mode"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 255
+    _attr_native_step = 1
+    _attr_mode = NumberMode.BOX
+
+    def __init__(
+        self,
+        entry: ConfigEntry,
+        coordinator: NovastarCoordinator,
+        device_info: NovastarDeviceInfo,
+    ) -> None:
+        """Initialize the number entity."""
+        super().__init__(coordinator)
+        self._entry = entry
+        self._device_info = device_info
+        self._attr_unique_id = f"{entry.entry_id}_audio_output_mode"
+
+    @property
+    def device_info(self):
+        """Return device info."""
+        model = "H Series"
+        if self._device_info.model_id:
+            model = f"H Series (Model {self._device_info.model_id})"
+        return {
+            "identifiers": {(DOMAIN, self._entry.entry_id)},
+            "manufacturer": "Novastar",
+            "model": model,
+            "name": self._entry.data.get(CONF_NAME, DEFAULT_NAME),
+            "sw_version": self._device_info.firmware,
+            "serial_number": self._device_info.serial,
+        }
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.coordinator.last_update_success
+
+    @property
+    def native_value(self) -> float | None:
+        """Return current audio output mode."""
+        if self.coordinator.data and self.coordinator.data.audio_output_id is not None:
+            return float(self.coordinator.data.audio_output_id)
+        return None
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set audio output mode value."""
+        await self.coordinator.async_set_audio_output(int(value))

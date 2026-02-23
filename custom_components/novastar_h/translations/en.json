@@ -139,6 +139,9 @@
       },
       "audio_volume": {
         "name": "Audio Volume"
+      },
+      "audio_output_mode": {
+        "name": "Audio Output Mode"
       }
     },
     "sensor": {
