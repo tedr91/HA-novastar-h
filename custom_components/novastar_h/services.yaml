@@ -18,8 +18,8 @@ send_raw_command:
         text:
     body:
       name: Body
-      description: The JSON body to send with the request.
-      required: true
+      description: Optional JSON body to send with the request. If omitted, deviceId and screenId default to 0.
+      required: false
       example: '{"deviceId": 0}'
       selector:
         object:

@@ -48,7 +48,7 @@ SERVICE_SEND_RAW_COMMAND_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_HOST): cv.string,
         vol.Required(ATTR_ENDPOINT): cv.string,
-        vol.Required(ATTR_BODY): dict,
+        vol.Optional(ATTR_BODY, default=dict): dict,
     }
 )
 
@@ -153,7 +153,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             host = host.strip() or None
 
         endpoint = call.data[ATTR_ENDPOINT]
-        body = call.data[ATTR_BODY]
+        body = call.data.get(ATTR_BODY, {})
         effective_body = dict(body)
         effective_body.setdefault("deviceId", 0)
         effective_body.setdefault("screenId", 0)
@@ -198,6 +198,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 resolved_host,
             )
             return
+
+# TEMPORARY DEBUG LOGGING - can be removed in future releases
+        _LOGGER.warning(
+            "Sending POST request to Novastar API url=%s body=%s",
+            endpoint,
+            effective_body
+        )
 
         result = await client_found.async_send_raw_command(endpoint, effective_body)
         if result is None:
