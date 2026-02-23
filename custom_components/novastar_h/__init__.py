@@ -199,6 +199,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
             return
 
+        _LOGGER.debug(
+            "send_raw_command host=%s endpoint=%s effective_body=%s",
+            resolved_host,
+            endpoint,
+            effective_body,
+        )
+
         result = await client_found.async_send_raw_command(endpoint, effective_body)
         if result is None:
             _LOGGER.warning("Raw command to %s failed", endpoint)

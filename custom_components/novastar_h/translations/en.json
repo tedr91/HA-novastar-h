@@ -178,8 +178,8 @@
           "description": "The IP address of the Novastar processor."
         },
         "endpoint": {
-          "name": "Endpoint",
-          "description": "The API endpoint path (e.g., 'device/readDetail')."
+          "name": "Command",
+          "description": "The API command endpoint path (e.g., 'device/readDetail')."
         },
         "body": {
           "name": "Body",
