@@ -142,68 +142,75 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "Multiple Novastar devices configured; specify host for this service call",
         )
 
-    # Register send_raw_command service if not already registered
-    # Check is done at call time via options/data
-    if not hass.services.has_service(DOMAIN, SERVICE_SEND_RAW_COMMAND):
-        async def async_send_raw_command(call: ServiceCall) -> None:
-            """Handle send_raw_command service call."""
-            host = call.data.get(CONF_HOST)
-            endpoint = call.data[ATTR_ENDPOINT]
-            body = call.data[ATTR_BODY]
+    # Always refresh send_raw_command registration so schema changes apply.
+    if hass.services.has_service(DOMAIN, SERVICE_SEND_RAW_COMMAND):
+        hass.services.async_remove(DOMAIN, SERVICE_SEND_RAW_COMMAND)
 
-            coordinator_found, resolved_host, error_message = resolve_coordinator_by_host(
-                host
-            )
+    async def async_send_raw_command(call: ServiceCall) -> None:
+        """Handle send_raw_command service call."""
+        host = call.data.get(CONF_HOST)
+        if isinstance(host, str):
+            host = host.strip() or None
 
-            if coordinator_found is None:
-                _LOGGER.error(error_message)
-                return
+        endpoint = call.data[ATTR_ENDPOINT]
+        body = call.data[ATTR_BODY]
+        effective_body = dict(body)
+        effective_body.setdefault("deviceId", 0)
+        effective_body.setdefault("screenId", 0)
 
-            client_found = None
-            raw_enabled = False
-            for eid, data in hass.data[DOMAIN].items():
-                if not isinstance(data, dict) or "client" not in data:
-                    continue
-                client = data["client"]
-                if client.host != resolved_host:
-                    continue
-                client_found = client
-
-                config_entry = hass.config_entries.async_get_entry(eid)
-                if config_entry:
-                    raw_enabled = config_entry.options.get(
-                        CONF_ALLOW_RAW_COMMANDS,
-                        config_entry.data.get(
-                            CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS
-                        ),
-                    )
-                break
-
-            if not client_found:
-                _LOGGER.error(
-                    "No Novastar device found at %s", resolved_host
-                )
-                return
-
-            if not raw_enabled:
-                _LOGGER.error(
-                    "Raw commands are not enabled for Novastar device at %s",
-                    resolved_host,
-                )
-                return
-
-            result = await client_found.async_send_raw_command(endpoint, body)
-            if result is None:
-                _LOGGER.warning("Raw command to %s failed", endpoint)
-            else:
-                _LOGGER.debug("Raw command result: %s", result)
-
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_SEND_RAW_COMMAND,
-            async_send_raw_command,
-            schema=SERVICE_SEND_RAW_COMMAND_SCHEMA,
+        coordinator_found, resolved_host, error_message = resolve_coordinator_by_host(
+            host
         )
+
+        if coordinator_found is None:
+            _LOGGER.error(error_message)
+            return
+
+        client_found = None
+        raw_enabled = False
+        for eid, data in hass.data[DOMAIN].items():
+            if not isinstance(data, dict) or "client" not in data:
+                continue
+            client = data["client"]
+            if client.host != resolved_host:
+                continue
+            client_found = client
+
+            config_entry = hass.config_entries.async_get_entry(eid)
+            if config_entry:
+                raw_enabled = config_entry.options.get(
+                    CONF_ALLOW_RAW_COMMANDS,
+                    config_entry.data.get(
+                        CONF_ALLOW_RAW_COMMANDS, DEFAULT_ALLOW_RAW_COMMANDS
+                    ),
+                )
+            break
+
+        if not client_found:
+            _LOGGER.error(
+                "No Novastar device found at %s", resolved_host
+            )
+            return
+
+        if not raw_enabled:
+            _LOGGER.error(
+                "Raw commands are not enabled for Novastar device at %s",
+                resolved_host,
+            )
+            return
+
+        result = await client_found.async_send_raw_command(endpoint, effective_body)
+        if result is None:
+            _LOGGER.warning("Raw command to %s failed", endpoint)
+        else:
+            _LOGGER.debug("Raw command result: %s", result)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SEND_RAW_COMMAND,
+        async_send_raw_command,
+        schema=SERVICE_SEND_RAW_COMMAND_SCHEMA,
+    )
 
     if not hass.services.has_service(DOMAIN, SERVICE_SET_LAYER_SOURCE):
         async def async_set_layer_source(call: ServiceCall) -> None:
