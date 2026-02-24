@@ -35,10 +35,16 @@ _LOGGER = logging.getLogger(__name__)
 SERVICE_SEND_RAW_COMMAND = "send_raw_command"
 SERVICE_SET_LAYER_SOURCE = "set_layer_source"
 SERVICE_SET_ACTIVE_PRESET = "set_active_preset"
+SERVICE_GET_SCREEN_DETAILS = "get_screen_details"
+SERVICE_GET_INPUT_DETAILS = "get_input_details"
+SERVICE_GET_OUTPUT_DETAILS = "get_output_details"
+SERVICE_GET_LAYER_DETAILS = "get_layer_details"
+SERVICE_GET_PRESET_DETAILS = "get_preset_details"
 ATTR_ENDPOINT = "endpoint"
 ATTR_BODY = "body"
 ATTR_LAYER_ID = "layer_id"
 ATTR_INPUT_ID = "input_id"
+ATTR_OUTPUT_ID = "output_id"
 ATTR_INTERFACE_TYPE = "interface_type"
 ATTR_SLOT_ID = "slot_id"
 ATTR_CROP_ID = "crop_id"
@@ -67,6 +73,48 @@ SERVICE_SET_ACTIVE_PRESET_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_HOST): cv.string,
         vol.Required(ATTR_PRESET_ID): vol.Coerce(int),
+    }
+)
+
+SERVICE_GET_SCREEN_DETAILS_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
+        vol.Optional(CONF_SCREEN_ID, default=DEFAULT_SCREEN_ID): vol.Coerce(int),
+    }
+)
+
+SERVICE_GET_INPUT_DETAILS_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Required(ATTR_INPUT_ID): vol.Coerce(int),
+        vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
+    }
+)
+
+SERVICE_GET_OUTPUT_DETAILS_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Required(ATTR_OUTPUT_ID): vol.Coerce(int),
+        vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
+    }
+)
+
+SERVICE_GET_LAYER_DETAILS_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Required(ATTR_LAYER_ID): vol.Coerce(int),
+        vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
+        vol.Optional(CONF_SCREEN_ID, default=DEFAULT_SCREEN_ID): vol.Coerce(int),
+    }
+)
+
+SERVICE_GET_PRESET_DETAILS_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Optional(ATTR_PRESET_ID): vol.Coerce(int),
+        vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
+        vol.Optional(CONF_SCREEN_ID, default=DEFAULT_SCREEN_ID): vol.Coerce(int),
     }
 )
 
@@ -237,73 +285,267 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         supports_response=SupportsResponse.OPTIONAL,
     )
 
-    if not hass.services.has_service(DOMAIN, SERVICE_SET_LAYER_SOURCE):
-        async def async_set_layer_source(call: ServiceCall) -> None:
-            """Handle set_layer_source service call."""
-            host = call.data.get(CONF_HOST)
-            layer_id = call.data[ATTR_LAYER_ID]
-            input_id = call.data.get(ATTR_INPUT_ID)
-            interface_type = call.data[ATTR_INTERFACE_TYPE]
-            slot_id = call.data[ATTR_SLOT_ID]
-            crop_id = call.data[ATTR_CROP_ID]
+    if hass.services.has_service(DOMAIN, SERVICE_SET_LAYER_SOURCE):
+        hass.services.async_remove(DOMAIN, SERVICE_SET_LAYER_SOURCE)
 
-            coordinator_found, resolved_host, error_message = resolve_coordinator_by_host(
-                host
-            )
+    async def async_set_layer_source(call: ServiceCall) -> dict[str, Any]:
+        """Handle set_layer_source service call."""
+        host = call.data.get(CONF_HOST)
+        layer_id = call.data[ATTR_LAYER_ID]
+        input_id = call.data.get(ATTR_INPUT_ID)
+        interface_type = call.data[ATTR_INTERFACE_TYPE]
+        slot_id = call.data[ATTR_SLOT_ID]
+        crop_id = call.data[ATTR_CROP_ID]
 
-            if coordinator_found is None:
-                _LOGGER.error(error_message)
-                return
-
-            result = await coordinator_found.async_set_layer_source(
-                layer_id=layer_id,
-                input_id=input_id,
-                interface_type=interface_type,
-                slot_id=slot_id,
-                crop_id=crop_id,
-            )
-            if not result:
-                _LOGGER.warning(
-                    "Failed to set layer source for host=%s layer_id=%s",
-                    resolved_host,
-                    layer_id,
-                )
-
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_SET_LAYER_SOURCE,
-            async_set_layer_source,
-            schema=SERVICE_SET_LAYER_SOURCE_SCHEMA,
+        coordinator_found, resolved_host, error_message = resolve_coordinator_by_host(
+            host
         )
 
-    if not hass.services.has_service(DOMAIN, SERVICE_SET_ACTIVE_PRESET):
-        async def async_set_active_preset(call: ServiceCall) -> None:
-            """Handle set_active_preset service call."""
-            host = call.data.get(CONF_HOST)
-            preset_id = call.data[ATTR_PRESET_ID]
+        if coordinator_found is None:
+            _LOGGER.error(error_message)
+            return {"ok": False, "error": error_message}
 
-            coordinator_found, resolved_host, error_message = resolve_coordinator_by_host(
-                host
+        result = await coordinator_found.async_set_layer_source(
+            layer_id=layer_id,
+            input_id=input_id,
+            interface_type=interface_type,
+            slot_id=slot_id,
+            crop_id=crop_id,
+        )
+        if not result:
+            _LOGGER.warning(
+                "Failed to set layer source for host=%s layer_id=%s",
+                resolved_host,
+                layer_id,
             )
 
-            if coordinator_found is None:
-                _LOGGER.error(error_message)
-                return
+        return {
+            "ok": bool(result),
+            "host": resolved_host,
+            "layer_id": layer_id,
+            "input_id": input_id,
+            "interface_type": interface_type,
+            "slot_id": slot_id,
+            "crop_id": crop_id,
+        }
 
-            result = await coordinator_found.async_set_active_preset(preset_id)
-            if not result:
-                _LOGGER.warning(
-                    "Failed to set active preset for host=%s preset_id=%s",
-                    resolved_host,
-                    preset_id,
-                )
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_LAYER_SOURCE,
+        async_set_layer_source,
+        schema=SERVICE_SET_LAYER_SOURCE_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
 
-        hass.services.async_register(
-            DOMAIN,
-            SERVICE_SET_ACTIVE_PRESET,
-            async_set_active_preset,
-            schema=SERVICE_SET_ACTIVE_PRESET_SCHEMA,
+    if hass.services.has_service(DOMAIN, SERVICE_SET_ACTIVE_PRESET):
+        hass.services.async_remove(DOMAIN, SERVICE_SET_ACTIVE_PRESET)
+
+    async def async_set_active_preset(call: ServiceCall) -> dict[str, Any]:
+        """Handle set_active_preset service call."""
+        host = call.data.get(CONF_HOST)
+        preset_id = call.data[ATTR_PRESET_ID]
+
+        coordinator_found, resolved_host, error_message = resolve_coordinator_by_host(
+            host
         )
+
+        if coordinator_found is None:
+            _LOGGER.error(error_message)
+            return {"ok": False, "error": error_message}
+
+        result = await coordinator_found.async_set_active_preset(preset_id)
+        if not result:
+            _LOGGER.warning(
+                "Failed to set active preset for host=%s preset_id=%s",
+                resolved_host,
+                preset_id,
+            )
+
+        return {
+            "ok": bool(result),
+            "host": resolved_host,
+            "preset_id": preset_id,
+        }
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SET_ACTIVE_PRESET,
+        async_set_active_preset,
+        schema=SERVICE_SET_ACTIVE_PRESET_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    async def async_read_detail(
+        host: str | None,
+        endpoint: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Read detail from one endpoint and return structured service response."""
+        coordinator_found, resolved_host, error_message = resolve_coordinator_by_host(
+            host
+        )
+        if coordinator_found is None:
+            _LOGGER.error(error_message)
+            return {"ok": False, "error": error_message}
+
+        result = await coordinator_found.client.async_send_raw_command(endpoint, payload)
+        if result is None:
+            _LOGGER.warning("Read detail failed host=%s endpoint=%s", resolved_host, endpoint)
+            return {
+                "ok": False,
+                "host": resolved_host,
+                "endpoint": endpoint,
+                "request_body": payload,
+                "response": None,
+            }
+
+        return {
+            "ok": True,
+            "host": resolved_host,
+            "endpoint": endpoint,
+            "request_body": payload,
+            "response": result,
+        }
+
+    if hass.services.has_service(DOMAIN, SERVICE_GET_SCREEN_DETAILS):
+        hass.services.async_remove(DOMAIN, SERVICE_GET_SCREEN_DETAILS)
+
+    async def async_get_screen_details(call: ServiceCall) -> dict[str, Any]:
+        """Handle get_screen_details service call."""
+        host = call.data.get(CONF_HOST)
+        if isinstance(host, str):
+            host = host.strip() or None
+        payload = {
+            "deviceId": call.data[CONF_DEVICE_ID],
+            "screenId": call.data[CONF_SCREEN_ID],
+        }
+        return await async_read_detail(host, "screen/readDetail", payload)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_SCREEN_DETAILS,
+        async_get_screen_details,
+        schema=SERVICE_GET_SCREEN_DETAILS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    if hass.services.has_service(DOMAIN, SERVICE_GET_INPUT_DETAILS):
+        hass.services.async_remove(DOMAIN, SERVICE_GET_INPUT_DETAILS)
+
+    async def async_get_input_details(call: ServiceCall) -> dict[str, Any]:
+        """Handle get_input_details service call."""
+        host = call.data.get(CONF_HOST)
+        if isinstance(host, str):
+            host = host.strip() or None
+        payload = {
+            "deviceId": call.data[CONF_DEVICE_ID],
+            "inputId": call.data[ATTR_INPUT_ID],
+        }
+        return await async_read_detail(host, "input/readDetail", payload)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_INPUT_DETAILS,
+        async_get_input_details,
+        schema=SERVICE_GET_INPUT_DETAILS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    if hass.services.has_service(DOMAIN, SERVICE_GET_OUTPUT_DETAILS):
+        hass.services.async_remove(DOMAIN, SERVICE_GET_OUTPUT_DETAILS)
+
+    async def async_get_output_details(call: ServiceCall) -> dict[str, Any]:
+        """Handle get_output_details service call."""
+        host = call.data.get(CONF_HOST)
+        if isinstance(host, str):
+            host = host.strip() or None
+        payload = {
+            "deviceId": call.data[CONF_DEVICE_ID],
+            "outputId": call.data[ATTR_OUTPUT_ID],
+        }
+        return await async_read_detail(host, "output/readDetail", payload)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_OUTPUT_DETAILS,
+        async_get_output_details,
+        schema=SERVICE_GET_OUTPUT_DETAILS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    if hass.services.has_service(DOMAIN, SERVICE_GET_LAYER_DETAILS):
+        hass.services.async_remove(DOMAIN, SERVICE_GET_LAYER_DETAILS)
+
+    async def async_get_layer_details(call: ServiceCall) -> dict[str, Any]:
+        """Handle get_layer_details service call."""
+        host = call.data.get(CONF_HOST)
+        if isinstance(host, str):
+            host = host.strip() or None
+        payload = {
+            "deviceId": call.data[CONF_DEVICE_ID],
+            "screenId": call.data[CONF_SCREEN_ID],
+            "layerId": call.data[ATTR_LAYER_ID],
+        }
+        return await async_read_detail(host, "layer/readDetail", payload)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_LAYER_DETAILS,
+        async_get_layer_details,
+        schema=SERVICE_GET_LAYER_DETAILS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    if hass.services.has_service(DOMAIN, SERVICE_GET_PRESET_DETAILS):
+        hass.services.async_remove(DOMAIN, SERVICE_GET_PRESET_DETAILS)
+
+    async def async_get_preset_details(call: ServiceCall) -> dict[str, Any]:
+        """Handle get_preset_details service call."""
+        host = call.data.get(CONF_HOST)
+        if isinstance(host, str):
+            host = host.strip() or None
+
+        coordinator_found, _resolved_host, error_message = resolve_coordinator_by_host(
+            host
+        )
+        if coordinator_found is None:
+            _LOGGER.error(error_message)
+            return {"ok": False, "error": error_message}
+
+        preset_id = call.data.get(ATTR_PRESET_ID)
+        if preset_id is None:
+            active_preset_id: int | None = None
+            if coordinator_found.data and coordinator_found.data.current_preset_id >= 0:
+                active_preset_id = int(coordinator_found.data.current_preset_id)
+            else:
+                active_candidate = await coordinator_found.client.async_get_current_preset(
+                    screen_id=int(call.data[CONF_SCREEN_ID]),
+                    device_id=int(call.data[CONF_DEVICE_ID]),
+                )
+                if isinstance(active_candidate, int) and active_candidate >= 0:
+                    active_preset_id = int(active_candidate)
+
+            if active_preset_id is None:
+                return {
+                    "ok": False,
+                    "error": "preset_id not provided and no active preset is currently available",
+                }
+            preset_id = active_preset_id
+
+        payload = {
+            "deviceId": call.data[CONF_DEVICE_ID],
+            "screenId": call.data[CONF_SCREEN_ID],
+            "presetId": int(preset_id),
+        }
+        return await async_read_detail(host, "preset/readDetail", payload)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_PRESET_DETAILS,
+        async_get_preset_details,
+        schema=SERVICE_GET_PRESET_DETAILS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
 
     loaded_platforms: list[Any] = []
     for platform in PLATFORMS:
@@ -366,6 +608,31 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN, SERVICE_SET_ACTIVE_PRESET
         ):
             hass.services.async_remove(DOMAIN, SERVICE_SET_ACTIVE_PRESET)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_GET_SCREEN_DETAILS
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_GET_SCREEN_DETAILS)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_GET_INPUT_DETAILS
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_GET_INPUT_DETAILS)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_GET_OUTPUT_DETAILS
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_GET_OUTPUT_DETAILS)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_GET_LAYER_DETAILS
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_GET_LAYER_DETAILS)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_GET_PRESET_DETAILS
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_GET_PRESET_DETAILS)
     return unloaded
 
 
