@@ -6,7 +6,7 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PORT
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 import homeassistant.helpers.config_validation as cv
 
 from .api import NovastarClient
@@ -146,7 +146,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if hass.services.has_service(DOMAIN, SERVICE_SEND_RAW_COMMAND):
         hass.services.async_remove(DOMAIN, SERVICE_SEND_RAW_COMMAND)
 
-    async def async_send_raw_command(call: ServiceCall) -> None:
+    async def async_send_raw_command(call: ServiceCall) -> dict[str, Any]:
         """Handle send_raw_command service call."""
         host = call.data.get(CONF_HOST)
         if isinstance(host, str):
@@ -164,7 +164,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         if coordinator_found is None:
             _LOGGER.error(error_message)
-            return
+            return {"ok": False, "error": error_message}
 
         client_found = None
         raw_enabled = False
@@ -190,14 +190,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error(
                 "No Novastar device found at %s", resolved_host
             )
-            return
+            return {"ok": False, "error": f"No Novastar device found at {resolved_host}"}
 
         if not raw_enabled:
             _LOGGER.error(
                 "Raw commands are not enabled for Novastar device at %s",
                 resolved_host,
             )
-            return
+            return {
+                "ok": False,
+                "error": f"Raw commands are not enabled for Novastar device at {resolved_host}",
+            }
 
 # TEMPORARY DEBUG LOGGING - can be removed in future releases
         _LOGGER.warning(
@@ -209,14 +212,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         result = await client_found.async_send_raw_command(endpoint, effective_body)
         if result is None:
             _LOGGER.warning("Raw command to %s failed", endpoint)
+            return {
+                "ok": False,
+                "host": resolved_host,
+                "endpoint": endpoint,
+                "request_body": effective_body,
+                "response": None,
+            }
         else:
             _LOGGER.debug("Raw command result: %s", result)
+            return {
+                "ok": True,
+                "host": resolved_host,
+                "endpoint": endpoint,
+                "request_body": effective_body,
+                "response": result,
+            }
 
     hass.services.async_register(
         DOMAIN,
         SERVICE_SEND_RAW_COMMAND,
         async_send_raw_command,
         schema=SERVICE_SEND_RAW_COMMAND_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
     )
 
     if not hass.services.has_service(DOMAIN, SERVICE_SET_LAYER_SOURCE):
