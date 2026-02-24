@@ -281,7 +281,7 @@
         },
         "output_id": {
           "name": "Output ID",
-          "description": "Output ID to read."
+          "description": "Optional output ID to read. If omitted, the currently active output is used."
         }
       }
     },
@@ -326,6 +326,84 @@
         "preset_id": {
           "name": "Preset ID",
           "description": "Optional preset ID to read. If omitted, the currently active preset is used."
+        }
+      }
+    },
+    "get_screens": {
+      "name": "Get Screens",
+      "description": "Get screen list from screen/readList. Host is optional when only one Novastar device is configured.",
+      "fields": {
+        "host": {
+          "name": "Host",
+          "description": "Optional IP address of the Novastar processor. Required when multiple Novastar devices are configured."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "Device ID. Defaults to 0."
+        }
+      }
+    },
+    "get_inputs": {
+      "name": "Get Inputs",
+      "description": "Get input list from input/readList. Host is optional when only one Novastar device is configured.",
+      "fields": {
+        "host": {
+          "name": "Host",
+          "description": "Optional IP address of the Novastar processor. Required when multiple Novastar devices are configured."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "Device ID. Defaults to 0."
+        }
+      }
+    },
+    "get_outputs": {
+      "name": "Get Outputs",
+      "description": "Get output list from output/readList. Host is optional when only one Novastar device is configured.",
+      "fields": {
+        "host": {
+          "name": "Host",
+          "description": "Optional IP address of the Novastar processor. Required when multiple Novastar devices are configured."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "Device ID. Defaults to 0."
+        }
+      }
+    },
+    "get_layers": {
+      "name": "Get Layers",
+      "description": "Get layer list from layer/detailList. Host is optional when only one Novastar device is configured.",
+      "fields": {
+        "host": {
+          "name": "Host",
+          "description": "Optional IP address of the Novastar processor. Required when multiple Novastar devices are configured."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "Device ID. Defaults to 0."
+        },
+        "screen_id": {
+          "name": "Screen ID",
+          "description": "Screen ID. Defaults to 0."
+        }
+      }
+    },
+    "get_presets": {
+      "name": "Get Presets",
+      "description": "Get preset list from preset/readList. Host is optional when only one Novastar device is configured.",
+      "fields": {
+        "host": {
+          "name": "Host",
+          "description": "Optional IP address of the Novastar processor. Required when multiple Novastar devices are configured."
+        },
+        "device_id": {
+          "name": "Device ID",
+          "description": "Device ID. Defaults to 0."
+        },
+        "screen_id": {
+          "name": "Screen ID",
+          "description": "Screen ID. Defaults to 0."
         }
       }
     }

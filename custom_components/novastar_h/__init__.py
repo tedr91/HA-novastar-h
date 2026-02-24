@@ -40,6 +40,11 @@ SERVICE_GET_INPUT_DETAILS = "get_input_details"
 SERVICE_GET_OUTPUT_DETAILS = "get_output_details"
 SERVICE_GET_LAYER_DETAILS = "get_layer_details"
 SERVICE_GET_PRESET_DETAILS = "get_preset_details"
+SERVICE_GET_SCREENS = "get_screens"
+SERVICE_GET_INPUTS = "get_inputs"
+SERVICE_GET_OUTPUTS = "get_outputs"
+SERVICE_GET_LAYERS = "get_layers"
+SERVICE_GET_PRESETS = "get_presets"
 ATTR_ENDPOINT = "endpoint"
 ATTR_BODY = "body"
 ATTR_LAYER_ID = "layer_id"
@@ -95,7 +100,7 @@ SERVICE_GET_INPUT_DETAILS_SCHEMA = vol.Schema(
 SERVICE_GET_OUTPUT_DETAILS_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_HOST): cv.string,
-        vol.Required(ATTR_OUTPUT_ID): vol.Coerce(int),
+        vol.Optional(ATTR_OUTPUT_ID): vol.Coerce(int),
         vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
     }
 )
@@ -113,6 +118,43 @@ SERVICE_GET_PRESET_DETAILS_SCHEMA = vol.Schema(
     {
         vol.Optional(CONF_HOST): cv.string,
         vol.Optional(ATTR_PRESET_ID): vol.Coerce(int),
+        vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
+        vol.Optional(CONF_SCREEN_ID, default=DEFAULT_SCREEN_ID): vol.Coerce(int),
+    }
+)
+
+SERVICE_GET_SCREENS_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
+    }
+)
+
+SERVICE_GET_INPUTS_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
+    }
+)
+
+SERVICE_GET_OUTPUTS_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
+    }
+)
+
+SERVICE_GET_LAYERS_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_HOST): cv.string,
+        vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
+        vol.Optional(CONF_SCREEN_ID, default=DEFAULT_SCREEN_ID): vol.Coerce(int),
+    }
+)
+
+SERVICE_GET_PRESETS_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_HOST): cv.string,
         vol.Optional(CONF_DEVICE_ID, default=DEFAULT_DEVICE_ID): vol.Coerce(int),
         vol.Optional(CONF_SCREEN_ID, default=DEFAULT_SCREEN_ID): vol.Coerce(int),
     }
@@ -459,9 +501,46 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         host = call.data.get(CONF_HOST)
         if isinstance(host, str):
             host = host.strip() or None
+
+        coordinator_found, _resolved_host, error_message = resolve_coordinator_by_host(
+            host
+        )
+        if coordinator_found is None:
+            _LOGGER.error(error_message)
+            return {"ok": False, "error": error_message}
+
+        output_id = call.data.get(ATTR_OUTPUT_ID)
+        if output_id is None:
+            active_output_id: int | None = None
+            if coordinator_found.data and coordinator_found.data.audio_output_id is not None:
+                active_output_id = int(coordinator_found.data.audio_output_id)
+            else:
+                screen_detail = await coordinator_found.client.async_send_raw_command(
+                    "screen/readDetail",
+                    {
+                        "deviceId": int(call.data[CONF_DEVICE_ID]),
+                        "screenId": int(coordinator_found.screen_id),
+                    },
+                )
+                if isinstance(screen_detail, dict):
+                    audio_data = screen_detail.get("audio")
+                    if isinstance(audio_data, dict):
+                        for key in ("outputChannelMode", "outputId", "audioOutputId"):
+                            candidate = audio_data.get(key)
+                            if isinstance(candidate, int):
+                                active_output_id = int(candidate)
+                                break
+
+            if active_output_id is None:
+                return {
+                    "ok": False,
+                    "error": "output_id not provided and no active output is currently available",
+                }
+            output_id = active_output_id
+
         payload = {
             "deviceId": call.data[CONF_DEVICE_ID],
-            "outputId": call.data[ATTR_OUTPUT_ID],
+            "outputId": int(output_id),
         }
         return await async_read_detail(host, "output/readDetail", payload)
 
@@ -544,6 +623,113 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         SERVICE_GET_PRESET_DETAILS,
         async_get_preset_details,
         schema=SERVICE_GET_PRESET_DETAILS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    if hass.services.has_service(DOMAIN, SERVICE_GET_SCREENS):
+        hass.services.async_remove(DOMAIN, SERVICE_GET_SCREENS)
+
+    async def async_get_screens(call: ServiceCall) -> dict[str, Any]:
+        """Handle get_screens service call."""
+        host = call.data.get(CONF_HOST)
+        if isinstance(host, str):
+            host = host.strip() or None
+        payload = {
+            "deviceId": call.data[CONF_DEVICE_ID],
+        }
+        return await async_read_detail(host, "screen/readList", payload)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_SCREENS,
+        async_get_screens,
+        schema=SERVICE_GET_SCREENS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    if hass.services.has_service(DOMAIN, SERVICE_GET_INPUTS):
+        hass.services.async_remove(DOMAIN, SERVICE_GET_INPUTS)
+
+    async def async_get_inputs(call: ServiceCall) -> dict[str, Any]:
+        """Handle get_inputs service call."""
+        host = call.data.get(CONF_HOST)
+        if isinstance(host, str):
+            host = host.strip() or None
+        payload = {
+            "deviceId": call.data[CONF_DEVICE_ID],
+        }
+        return await async_read_detail(host, "input/readList", payload)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_INPUTS,
+        async_get_inputs,
+        schema=SERVICE_GET_INPUTS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    if hass.services.has_service(DOMAIN, SERVICE_GET_OUTPUTS):
+        hass.services.async_remove(DOMAIN, SERVICE_GET_OUTPUTS)
+
+    async def async_get_outputs(call: ServiceCall) -> dict[str, Any]:
+        """Handle get_outputs service call."""
+        host = call.data.get(CONF_HOST)
+        if isinstance(host, str):
+            host = host.strip() or None
+        payload = {
+            "deviceId": call.data[CONF_DEVICE_ID],
+        }
+        return await async_read_detail(host, "output/readList", payload)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_OUTPUTS,
+        async_get_outputs,
+        schema=SERVICE_GET_OUTPUTS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    if hass.services.has_service(DOMAIN, SERVICE_GET_LAYERS):
+        hass.services.async_remove(DOMAIN, SERVICE_GET_LAYERS)
+
+    async def async_get_layers(call: ServiceCall) -> dict[str, Any]:
+        """Handle get_layers service call."""
+        host = call.data.get(CONF_HOST)
+        if isinstance(host, str):
+            host = host.strip() or None
+        payload = {
+            "deviceId": call.data[CONF_DEVICE_ID],
+            "screenId": call.data[CONF_SCREEN_ID],
+        }
+        return await async_read_detail(host, "layer/detailList", payload)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_LAYERS,
+        async_get_layers,
+        schema=SERVICE_GET_LAYERS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+
+    if hass.services.has_service(DOMAIN, SERVICE_GET_PRESETS):
+        hass.services.async_remove(DOMAIN, SERVICE_GET_PRESETS)
+
+    async def async_get_presets(call: ServiceCall) -> dict[str, Any]:
+        """Handle get_presets service call."""
+        host = call.data.get(CONF_HOST)
+        if isinstance(host, str):
+            host = host.strip() or None
+        payload = {
+            "deviceId": call.data[CONF_DEVICE_ID],
+            "screenId": call.data[CONF_SCREEN_ID],
+        }
+        return await async_read_detail(host, "preset/readList", payload)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_GET_PRESETS,
+        async_get_presets,
+        schema=SERVICE_GET_PRESETS_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
 
@@ -633,6 +819,31 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             DOMAIN, SERVICE_GET_PRESET_DETAILS
         ):
             hass.services.async_remove(DOMAIN, SERVICE_GET_PRESET_DETAILS)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_GET_SCREENS
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_GET_SCREENS)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_GET_INPUTS
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_GET_INPUTS)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_GET_OUTPUTS
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_GET_OUTPUTS)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_GET_LAYERS
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_GET_LAYERS)
+
+        if not hass.data.get(DOMAIN) and hass.services.has_service(
+            DOMAIN, SERVICE_GET_PRESETS
+        ):
+            hass.services.async_remove(DOMAIN, SERVICE_GET_PRESETS)
     return unloaded
 
 
