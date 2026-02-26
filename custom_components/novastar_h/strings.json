@@ -154,6 +154,9 @@
       "signal_status": {
         "name": "Signal Power Status"
       },
+      "screens": {
+        "name": "Screens"
+      },
       "inputs": {
         "name": "Inputs"
       },
