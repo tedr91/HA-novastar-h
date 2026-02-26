@@ -306,22 +306,16 @@ class NovastarClient:
         """Get list of screens."""
         data = await self._async_request("screen/readList", {"deviceId": device_id})
 
-        def _extract_dimension(detail: dict[str, Any], keys: tuple[str, ...]) -> int:
-            """Extract one dimension from known top-level and nested keys."""
-            for key in keys:
-                value = detail.get(key)
-                if isinstance(value, (int, float)):
-                    return int(value)
-
-            for container_key in ("resolution", "screen", "canvas", "size"):
-                container = detail.get(container_key)
-                if not isinstance(container, dict):
-                    continue
-                for key in keys:
-                    value = container.get(key)
-                    if isinstance(value, (int, float)):
-                        return int(value)
-
+        def _coerce_size_value(value: Any) -> int:
+            """Convert size values to int with safe fallback."""
+            if isinstance(value, bool):
+                return 0
+            if isinstance(value, int):
+                return value
+            if isinstance(value, float):
+                return int(value)
+            if isinstance(value, str) and value.isdigit():
+                return int(value)
             return 0
 
         screens = []
@@ -339,14 +333,12 @@ class NovastarClient:
                 width = 0
                 height = 0
                 if isinstance(detail, dict):
-                    width = _extract_dimension(
-                        detail,
-                        ("width", "screenWidth", "pixelWidth", "canvasWidth"),
-                    )
-                    height = _extract_dimension(
-                        detail,
-                        ("height", "screenHeight", "pixelHeight", "canvasHeight"),
-                    )
+                    output_mode = detail.get("outputMode")
+                    if isinstance(output_mode, dict):
+                        size = output_mode.get("size")
+                        if isinstance(size, dict):
+                            width = _coerce_size_value(size.get("width"))
+                            height = _coerce_size_value(size.get("height"))
 
                 screens.append(
                     NovastarScreen(
