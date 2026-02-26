@@ -38,6 +38,8 @@ class NovastarScreen:
 
     screen_id: int = 0
     name: str = ""
+    width: int = 0
+    height: int = 0
 
 
 @dataclass
@@ -307,10 +309,20 @@ class NovastarClient:
         screens = []
         if data and "screens" in data:
             for screen in data["screens"]:
+                width = screen.get("width", screen.get("screenWidth", 0))
+                if not isinstance(width, (int, float)):
+                    width = 0
+
+                height = screen.get("height", screen.get("screenHeight", 0))
+                if not isinstance(height, (int, float)):
+                    height = 0
+
                 screens.append(
                     NovastarScreen(
                         screen_id=screen.get("screenId", 0),
                         name=screen.get("name", ""),
+                        width=int(width),
+                        height=int(height),
                     )
                 )
         return screens
