@@ -306,23 +306,54 @@ class NovastarClient:
         """Get list of screens."""
         data = await self._async_request("screen/readList", {"deviceId": device_id})
 
+        def _extract_dimension(detail: dict[str, Any], keys: tuple[str, ...]) -> int:
+            """Extract one dimension from known top-level and nested keys."""
+            for key in keys:
+                value = detail.get(key)
+                if isinstance(value, (int, float)):
+                    return int(value)
+
+            for container_key in ("resolution", "screen", "canvas", "size"):
+                container = detail.get(container_key)
+                if not isinstance(container, dict):
+                    continue
+                for key in keys:
+                    value = container.get(key)
+                    if isinstance(value, (int, float)):
+                        return int(value)
+
+            return 0
+
         screens = []
         if data and "screens" in data:
             for screen in data["screens"]:
-                width = screen.get("width", screen.get("screenWidth", 0))
-                if not isinstance(width, (int, float)):
-                    width = 0
+                screen_id = screen.get("screenId", 0)
+                if not isinstance(screen_id, (int, float)):
+                    screen_id = 0
 
-                height = screen.get("height", screen.get("screenHeight", 0))
-                if not isinstance(height, (int, float)):
-                    height = 0
+                detail = await self._async_request(
+                    "screen/readDetail",
+                    {"screenId": int(screen_id), "deviceId": device_id},
+                )
+
+                width = 0
+                height = 0
+                if isinstance(detail, dict):
+                    width = _extract_dimension(
+                        detail,
+                        ("width", "screenWidth", "pixelWidth", "canvasWidth"),
+                    )
+                    height = _extract_dimension(
+                        detail,
+                        ("height", "screenHeight", "pixelHeight", "canvasHeight"),
+                    )
 
                 screens.append(
                     NovastarScreen(
-                        screen_id=screen.get("screenId", 0),
+                        screen_id=int(screen_id),
                         name=screen.get("name", ""),
-                        width=int(width),
-                        height=int(height),
+                        width=width,
+                        height=height,
                     )
                 )
         return screens
